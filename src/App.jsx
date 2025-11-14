@@ -1,0 +1,189 @@
+import React, { useEffect, useState } from 'react'
+import { Routes, Route, Navigate, Link, useNavigate } from 'react-router-dom'
+import { supabase } from './supabaseClient'
+import LoginPage from './pages/LoginPage'
+import DashboardPage from './pages/DashboardPage'
+import ClientsPage from './pages/ClientsPage'
+import SitesPage from './pages/SitesPage'
+import ProductsPage from './pages/ProductsPage'
+import ServicesPage from './pages/ServicesPage'
+import OrdersPage from './pages/OrdersPage'
+import OrderPrintPage from './pages/OrderPrintPage'
+import BackupPage from './pages/BackupPage'
+import ReportsPage from './pages/ReportsPage'
+import NotFoundPage from './pages/NotFoundPage'
+import ProtectedRoute from './components/ProtectedRoute'
+import logo from './assets/logo-idealcollor.png' // ou logo-idealcollor.png se for esse o nome
+
+function App() {
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    async function getSession() {
+      const { data, error } = await supabase.auth.getUser()
+      if (!error) {
+        setUser(data.user ?? null)
+      }
+      setLoading(false)
+    }
+
+    getSession()
+
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user ?? null)
+      if (event === 'SIGNED_OUT') {
+        navigate('/login')
+      }
+      if (event === 'SIGNED_IN') {
+        navigate('/')
+      }
+    })
+
+    return () => {
+      listener.subscription.unsubscribe()
+    }
+  }, [navigate])
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+  }
+
+  if (loading) {
+    return (
+      <div className="centered">
+        <p>Carregando...</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="app-container">
+      <header className="app-header no-print">
+        <div className="header-top">
+          <div className="brand">
+            <img src={logo} alt="Ideal Collor" className="brand-logo" />
+            <div className="brand-text">
+              <span className="brand-title">IDEAL COLLOR</span>
+              <span className="brand-subtitle">Sistema de Ordem de Serviço</span>
+            </div>
+          </div>
+          {user && (
+            <div className="user-info">
+              <span>{user.email}</span>
+              <button onClick={handleLogout}>Sair</button>
+            </div>
+          )}
+        </div>
+        <nav>
+          {user && (
+            <>
+              <Link to="/">Dashboard</Link>
+              <Link to="/clients">Clientes</Link>
+              <Link to="/sites">Obras</Link>
+              <Link to="/products">Produtos</Link>
+              <Link to="/services">Serviços</Link>
+              <Link to="/orders">Ordens de Serviço</Link>
+              <Link to="/reports">Relatórios</Link>
+              <Link to="/backup">Backups</Link>
+            </>
+          )}
+          {!user && <Link to="/login">Login</Link>}
+        </nav>
+      </header>
+
+      <main className="app-main">
+        <Routes>
+          <Route path="/login" element={<LoginPage user={user} />} />
+
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute user={user}>
+                <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/clients"
+            element={
+              <ProtectedRoute user={user}>
+                <ClientsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/sites"
+            element={
+              <ProtectedRoute user={user}>
+                <SitesPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/products"
+            element={
+              <ProtectedRoute user={user}>
+                <ProductsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/services"
+            element={
+              <ProtectedRoute user={user}>
+                <ServicesPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/orders"
+            element={
+              <ProtectedRoute user={user}>
+                <OrdersPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/orders/:id"
+            element={
+              <ProtectedRoute user={user}>
+                <OrderPrintPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/reports"
+            element={
+              <ProtectedRoute user={user}>
+                <ReportsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/backup"
+            element={
+              <ProtectedRoute user={user}>
+                <BackupPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route path="/404" element={<NotFoundPage />} />
+          <Route path="*" element={<Navigate to="/404" />} />
+        </Routes>
+      </main>
+    </div>
+  )
+}
+
+export default App
