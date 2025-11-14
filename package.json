@@ -1,20 +1,20 @@
 {
   "name": "ideal-collor-os",
-  "private": true,
   "version": "1.0.0",
+  "private": true,
   "scripts": {
-    "dev": "vite",
-    "build": "node node_modules/vite/bin/vite.js build",
-    "preview": "vite preview"
+    "dev": "node ./node_modules/vite/bin/vite.js dev",
+    "build": "node ./node_modules/vite/bin/vite.js build",
+    "preview": "node ./node_modules/vite/bin/vite.js preview"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.48.0",
+    "@supabase/supabase-js": "^2.45.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.0"
+    "react-router-dom": "^6.26.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.2",
-    "vite": "^5.4.1"
+    "@vitejs/plugin-react": "^4.3.0",
+    "vite": "^5.4.0"
   }
 }
