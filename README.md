@@ -10,3 +10,5 @@ Para rodar:
 1. npm install
 2. Criar arquivo .env.local com VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY
 3. npm run dev
+
+# trigger deploy
