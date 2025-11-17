@@ -159,10 +159,9 @@ function App() {
             }
           />
 
-          {/* Impressão da OS 
-              Aqui usamos /orders/:id porque é isso que o botão de imprimir usa */}
+          {/* Impressão da OS */}
           <Route
-            path="/orders/:id"
+            path="/orders/:id/print"
             element={
               <ProtectedRoute user={user}>
                 <OrderPrintPage />
@@ -170,8 +169,7 @@ function App() {
             }
           />
 
-          {/* Assinatura eletrônica da OS
-              Deixamos sem ProtectedRoute para o cliente conseguir assinar pelo link */}
+          {/* Assinatura eletrônica da OS (pública para o cliente assinar pelo link) */}
           <Route
             path="/orders/:id/sign"
             element={<OrderSignPage />}
