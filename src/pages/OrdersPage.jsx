@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 
 const STATUS_OPTIONS = [
@@ -65,6 +65,8 @@ function formatDate(dateStr) {
 }
 
 function OrdersPage() {
+  const navigate = useNavigate();
+
   const [clients, setClients] = useState([]);
   const [sites, setSites] = useState([]);
   const [services, setServices] = useState([]);
@@ -79,7 +81,7 @@ function OrdersPage() {
   const [materialLines, setMaterialLines] = useState([emptyMaterialLine()]);
   const [editingOrderId, setEditingOrderId] = useState(null);
 
-  // carregamento inicial
+  // Carregamento inicial
   useEffect(() => {
     async function loadAll() {
       setLoading(true);
