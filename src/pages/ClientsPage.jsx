@@ -142,11 +142,27 @@ function ClientsPage() {
     if (!ok) return
 
     const { error } = await supabase.from('clients').delete().eq('id', id)
+
     if (error) {
       console.error(error)
-      alert('Erro ao remover cliente: ' + error.message)
+
+      // Tratamento específico para a foreign key da tabela orders
+      const msg = error.message?.toLowerCase() || ''
+      if (
+        msg.includes('foreign key constraint') &&
+        msg.includes('orders_client_id_fkey')
+      ) {
+        alert(
+          'Esse cliente já possui ordens de serviço vinculadas.\n\n' +
+            'Por segurança, não é possível excluir um cliente que já foi usado em OS.\n' +
+            'Você pode editar os dados dele, mas não remover.'
+        )
+      } else {
+        alert('Erro ao remover cliente: ' + error.message)
+      }
       return
     }
+
     await loadClients()
   }
 
