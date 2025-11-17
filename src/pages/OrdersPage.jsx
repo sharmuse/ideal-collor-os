@@ -58,6 +58,17 @@ function OrdersPage() {
     state: ''
   })
 
+  // ---- EDITAR OS (MODAL) ----
+  const [editOrderModalOpen, setEditOrderModalOpen] = useState(false)
+  const [savingOrderEdit, setSavingOrderEdit] = useState(false)
+  const [editOrderForm, setEditOrderForm] = useState({
+    id: null,
+    status: 'aberta',
+    payment_type: 'prazo',
+    opening_date: '',
+    due_date: ''
+  })
+
   // --------- CARREGAR DADOS BÁSICOS ---------
 
   async function loadBaseData() {
@@ -89,6 +100,7 @@ function OrdersPage() {
         id,
         order_number,
         status,
+        payment_type,
         opening_date,
         due_date,
         total_final,
@@ -174,7 +186,7 @@ function OrdersPage() {
         line.product_id = value
         const product = products.find(p => p.id === value)
         line.unit = product?.unit || ''
-        line.unit_price = product?.price ?? '' // sugestão, mas pode ser alterado
+        line.unit_price = product?.price ?? '' // sugestão, pode ser alterado
       } else if (field === 'quantity') {
         line.quantity = value
       } else if (field === 'unit') {
@@ -213,7 +225,7 @@ function OrdersPage() {
   const discountValue = totalGeneral * (Number(form.discount_percent) || 0) / 100
   const totalFinal = totalGeneral - discountValue
 
-  // --------- SALVAR OS ---------
+  // --------- SALVAR NOVA OS ---------
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -380,6 +392,98 @@ function OrdersPage() {
     } finally {
       setSavingClient(false)
     }
+  }
+
+  // --------- EDITAR OS (MODAL) ---------
+
+  function handleOpenEditOrder(order) {
+    setEditOrderForm({
+      id: order.id,
+      status: order.status || 'aberta',
+      payment_type: order.payment_type || 'prazo',
+      opening_date: order.opening_date
+        ? order.opening_date.slice(0, 10)
+        : '',
+      due_date: order.due_date ? order.due_date.slice(0, 10) : ''
+    })
+    setEditOrderModalOpen(true)
+  }
+
+  function handleEditOrderChange(e) {
+    const { name, value } = e.target
+    setEditOrderForm(prev => ({ ...prev, [name]: value }))
+  }
+
+  async function handleSaveEditOrder(e) {
+    e.preventDefault()
+    if (!editOrderForm.id) return
+
+    setSavingOrderEdit(true)
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          status: editOrderForm.status,
+          payment_type: editOrderForm.payment_type,
+          opening_date: editOrderForm.opening_date || null,
+          due_date: editOrderForm.due_date || null
+        })
+        .eq('id', editOrderForm.id)
+
+      if (error) {
+        console.error(error)
+        alert('Erro ao atualizar ordem de serviço: ' + error.message)
+        return
+      }
+
+      setEditOrderModalOpen(false)
+      await loadOrders()
+    } finally {
+      setSavingOrderEdit(false)
+    }
+  }
+
+  // --------- REMOVER OS ---------
+
+  async function handleDeleteOrder(id) {
+    const ok = window.confirm(
+      'Tem certeza que deseja remover esta Ordem de Serviço?\n\nOs serviços e materiais vinculados a ela também serão removidos.'
+    )
+    if (!ok) return
+
+    // Primeiro remove serviços e materiais vinculados, depois a OS
+    const { error: errServices } = await supabase
+      .from('order_services')
+      .delete()
+      .eq('order_id', id)
+    if (errServices) {
+      console.error(errServices)
+      alert('Erro ao remover serviços da OS: ' + errServices.message)
+      return
+    }
+
+    const { error: errMaterials } = await supabase
+      .from('order_materials')
+      .delete()
+      .eq('order_id', id)
+    if (errMaterials) {
+      console.error(errMaterials)
+      alert('Erro ao remover materiais da OS: ' + errMaterials.message)
+      return
+    }
+
+    const { error: errOrder } = await supabase
+      .from('orders')
+      .delete()
+      .eq('id', id)
+
+    if (errOrder) {
+      console.error(errOrder)
+      alert('Erro ao remover ordem de serviço: ' + errOrder.message)
+      return
+    }
+
+    await loadOrders()
   }
 
   // --------- HELPERS ---------
@@ -773,6 +877,20 @@ function OrdersPage() {
                       >
                         Imprimir
                       </Link>
+                      <button
+                        type="button"
+                        className="button-secondary button-xs"
+                        onClick={() => handleOpenEditOrder(o)}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        className="button-danger button-xs"
+                        onClick={() => handleDeleteOrder(o.id)}
+                      >
+                        Remover
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -862,6 +980,84 @@ function OrdersPage() {
                 type="button"
                 className="button-secondary"
                 onClick={() => setShowClientModal(false)}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EDITAR OS */}
+      {editOrderModalOpen && (
+        <div className="modal-backdrop">
+          <div className="modal-card">
+            <h3>Editar Ordem de Serviço</h3>
+            <form className="form-grid" onSubmit={handleSaveEditOrder}>
+              <label>
+                Status
+                <select
+                  name="status"
+                  value={editOrderForm.status}
+                  onChange={handleEditOrderChange}
+                >
+                  {STATUS_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Forma de pagamento
+                <select
+                  name="payment_type"
+                  value={editOrderForm.payment_type}
+                  onChange={handleEditOrderChange}
+                >
+                  {PAYMENT_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Data de abertura
+                <input
+                  type="date"
+                  name="opening_date"
+                  value={editOrderForm.opening_date}
+                  onChange={handleEditOrderChange}
+                />
+              </label>
+
+              <label>
+                Data prevista
+                <input
+                  type="date"
+                  name="due_date"
+                  value={editOrderForm.due_date}
+                  onChange={handleEditOrderChange}
+                />
+              </label>
+            </form>
+
+            <div className="form-actions">
+              <button
+                type="button"
+                className="button-primary"
+                onClick={handleSaveEditOrder}
+                disabled={savingOrderEdit}
+              >
+                {savingOrderEdit ? 'Salvando...' : 'Salvar alterações'}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => setEditOrderModalOpen(false)}
               >
                 Cancelar
               </button>
