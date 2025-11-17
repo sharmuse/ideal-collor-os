@@ -5,17 +5,20 @@ function ProductsPage() {
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [editingId, setEditingId] = useState(null)
 
-  const [form, setForm] = useState({
+  const emptyForm = {
     type: '',
     name: '',
     color_code: '',
     unit: '',
-    avg_consumption: '',
-    cost_unit: '',
-    price_unit: '',
-    stock_qty: ''
-  })
+    consumption: '',
+    cost: '',
+    price: '',
+    stock_quantity: ''
+  }
+
+  const [form, setForm] = useState(emptyForm)
 
   function handleChange(e) {
     const { name, value } = e.target
@@ -27,12 +30,14 @@ function ProductsPage() {
     const { data, error } = await supabase
       .from('products')
       .select('*')
-      .order('created_at', { ascending: false })
+      .order('type', { ascending: true })
+      .order('name', { ascending: true })
 
     if (!error) {
       setProducts(data)
     } else {
       console.error(error)
+      alert('Erro ao carregar produtos: ' + error.message)
     }
     setLoading(false)
   }
@@ -46,33 +51,76 @@ function ProductsPage() {
     setSaving(true)
 
     const payload = {
-      ...form,
-      avg_consumption: form.avg_consumption ? Number(form.avg_consumption) : null,
-      cost_unit: form.cost_unit ? Number(form.cost_unit) : null,
-      price_unit: form.price_unit ? Number(form.price_unit) : null,
-      stock_qty: form.stock_qty ? Number(form.stock_qty) : 0
+      type: form.type || null,
+      name: form.name || null,
+      color_code: form.color_code || null,
+      unit: form.unit || null,
+      consumption: form.consumption ? Number(form.consumption) : null,
+      cost: form.cost ? Number(form.cost) : null,
+      price: form.price ? Number(form.price) : null,
+      stock_quantity: form.stock_quantity ? Number(form.stock_quantity) : null
     }
 
-    const { error } = await supabase.from('products').insert([payload])
+    try {
+      if (editingId) {
+        const { error } = await supabase
+          .from('products')
+          .update(payload)
+          .eq('id', editingId)
 
+        if (error) {
+          console.error(error)
+          alert('Erro ao atualizar produto: ' + error.message)
+          return
+        }
+      } else {
+        const { error } = await supabase.from('products').insert([payload])
+        if (error) {
+          console.error(error)
+          alert('Erro ao salvar produto: ' + error.message)
+          return
+        }
+      }
+
+      setForm(emptyForm)
+      setEditingId(null)
+      await loadProducts()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function handleEdit(product) {
+    setEditingId(product.id)
+    setForm({
+      type: product.type || '',
+      name: product.name || '',
+      color_code: product.color_code || '',
+      unit: product.unit || '',
+      consumption: product.consumption ?? '',
+      cost: product.cost ?? '',
+      price: product.price ?? '',
+      stock_quantity: product.stock_quantity ?? ''
+    })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  async function handleDelete(id) {
+    const ok = window.confirm('Tem certeza que deseja remover este produto/material?')
+    if (!ok) return
+
+    const { error } = await supabase.from('products').delete().eq('id', id)
     if (error) {
       console.error(error)
-      alert('Erro ao salvar produto: ' + error.message)
-    } else {
-      setForm({
-        type: '',
-        name: '',
-        color_code: '',
-        unit: '',
-        avg_consumption: '',
-        cost_unit: '',
-        price_unit: '',
-        stock_qty: ''
-      })
-      await loadProducts()
+      alert('Erro ao remover produto: ' + error.message)
+      return
     }
+    await loadProducts()
+  }
 
-    setSaving(false)
+  function handleCancelEdit() {
+    setEditingId(null)
+    setForm(emptyForm)
   }
 
   return (
@@ -82,16 +130,15 @@ function ProductsPage() {
 
       <div style={{ marginTop: '1rem', marginBottom: '2rem' }}>
         <div className="form-card">
-          <h3>Novo Produto / Material</h3>
+          <h3>{editingId ? 'Editar produto / material' : 'Novo Produto / Material'}</h3>
           <form className="form-grid" onSubmit={handleSubmit}>
             <label>
               Tipo
               <input
                 name="type"
-                placeholder="Fulget, toque de brilho, grafiato..."
                 value={form.type}
                 onChange={handleChange}
-                required
+                placeholder="Fulget, toque de brilho, grafiato..."
               />
             </label>
 
@@ -101,7 +148,6 @@ function ProductsPage() {
                 name="name"
                 value={form.name}
                 onChange={handleChange}
-                required
               />
             </label>
 
@@ -126,53 +172,70 @@ function ProductsPage() {
             <label>
               Consumo médio (kg/m², m²/unid.)
               <input
+                name="consumption"
+                value={form.consumption}
+                onChange={handleChange}
                 type="number"
                 step="0.01"
-                name="avg_consumption"
-                value={form.avg_consumption}
-                onChange={handleChange}
               />
             </label>
 
             <label>
               Custo unitário (R$)
               <input
+                name="cost"
+                value={form.cost}
+                onChange={handleChange}
                 type="number"
                 step="0.01"
-                name="cost_unit"
-                value={form.cost_unit}
-                onChange={handleChange}
               />
             </label>
 
             <label>
               Preço de venda unitário (R$)
               <input
+                name="price"
+                value={form.price}
+                onChange={handleChange}
                 type="number"
                 step="0.01"
-                name="price_unit"
-                value={form.price_unit}
-                onChange={handleChange}
               />
             </label>
 
             <label>
               Estoque atual
               <input
-                type="number"
-                step="0.01"
-                name="stock_qty"
-                value={form.stock_qty}
+                name="stock_quantity"
+                value={form.stock_quantity}
                 onChange={handleChange}
+                type="number"
+                step="1"
               />
             </label>
-
-            <div className="form-actions">
-              <button type="submit" className="button-primary" disabled={saving}>
-                {saving ? 'Salvando...' : 'Salvar produto'}
-              </button>
-            </div>
           </form>
+
+          <div className="form-actions">
+            <button
+              type="button"
+              className="button-primary"
+              onClick={handleSubmit}
+              disabled={saving}
+            >
+              {saving
+                ? (editingId ? 'Atualizando...' : 'Salvando...')
+                : (editingId ? 'Atualizar produto' : 'Salvar produto')}
+            </button>
+
+            {editingId && (
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={handleCancelEdit}
+              >
+                Cancelar edição
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -181,7 +244,7 @@ function ProductsPage() {
       {loading ? (
         <p>Carregando produtos...</p>
       ) : products.length === 0 ? (
-        <p>Nenhum produto cadastrado ainda.</p>
+        <p>Nenhum produto cadastrado.</p>
       ) : (
         <div className="table-responsive">
           <table className="table">
@@ -195,6 +258,7 @@ function ProductsPage() {
                 <th>Custo</th>
                 <th>Preço</th>
                 <th>Estoque</th>
+                <th className="table-actions-col">Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -204,10 +268,26 @@ function ProductsPage() {
                   <td>{p.name}</td>
                   <td>{p.color_code}</td>
                   <td>{p.unit}</td>
-                  <td>{p.avg_consumption}</td>
-                  <td>{p.cost_unit}</td>
-                  <td>{p.price_unit}</td>
-                  <td>{p.stock_qty}</td>
+                  <td>{p.consumption}</td>
+                  <td>{p.cost}</td>
+                  <td>{p.price}</td>
+                  <td>{p.stock_quantity}</td>
+                  <td className="table-actions">
+                    <button
+                      type="button"
+                      className="button-secondary button-xs"
+                      onClick={() => handleEdit(p)}
+                    >
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      className="button-danger button-xs"
+                      onClick={() => handleDelete(p.id)}
+                    >
+                      Remover
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
