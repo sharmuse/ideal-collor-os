@@ -1,21 +1,37 @@
 import React, { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 
-function OrderFormPage() {
+const STATUS_OPTIONS = [
+  { value: 'aberta', label: 'Aberta' },
+  { value: 'em_andamento', label: 'Em andamento' },
+  { value: 'concluida', label: 'Concluída' },
+  { value: 'cancelada', label: 'Cancelada' }
+]
+
+const PAYMENT_OPTIONS = [
+  { value: 'prazo', label: 'A prazo' },
+  { value: 'avista', label: 'À vista' }
+]
+
+function OrdersPage() {
   const [clients, setClients] = useState([])
   const [sites, setSites] = useState([])
   const [services, setServices] = useState([])
   const [products, setProducts] = useState([])
+  const [orders, setOrders] = useState([])
 
+  const [loading, setLoading] = useState(true)
+  const [loadingOrders, setLoadingOrders] = useState(true)
   const [saving, setSaving] = useState(false)
 
   const [form, setForm] = useState({
     client_id: '',
     site_id: '',
-    status: 'Aberta',
+    status: 'aberta',
     opening_date: '',
     due_date: '',
-    payment_type: 'prazo', // 'avista' | 'prazo'
+    payment_type: 'prazo',
     discount_percent: 0,
     technical_notes: '',
     commercial_notes: ''
@@ -29,7 +45,7 @@ function OrderFormPage() {
     { product_id: '', quantity: '', unit: '', packaging: '', unit_price: '', total_cost: 0 }
   ])
 
-  // MODAL DE CLIENTE RÁPIDO
+  // ---- CLIENTE RÁPIDO (MODAL) ----
   const [showClientModal, setShowClientModal] = useState(false)
   const [savingClient, setSavingClient] = useState(false)
   const [quickClient, setQuickClient] = useState({
@@ -42,22 +58,10 @@ function OrderFormPage() {
     state: ''
   })
 
-  function handleFormChange(e) {
-    const { name, value } = e.target
-    setForm(prev => ({ ...prev, [name]: value }))
-  }
+  // --------- CARREGAR DADOS BÁSICOS ---------
 
-  function handleDiscountChange(e) {
-    let value = e.target.value.replace(',', '.')
-    if (value === '') value = 0
-    let num = Number(value)
-    if (isNaN(num)) num = 0
-    if (num < 0) num = 0
-    if (num > 8) num = 8 // máximo 8%
-    setForm(prev => ({ ...prev, discount_percent: num }))
-  }
-
-  async function loadInitialData() {
+  async function loadBaseData() {
+    setLoading(true)
     const [clientsRes, sitesRes, servicesRes, productsRes] = await Promise.all([
       supabase.from('clients').select('id, name, city, state').order('name'),
       supabase
@@ -72,13 +76,60 @@ function OrderFormPage() {
     if (!sitesRes.error) setSites(sitesRes.data)
     if (!servicesRes.error) setServices(servicesRes.data)
     if (!productsRes.error) setProducts(productsRes.data)
+
+    setLoading(false)
+  }
+
+  async function loadOrders() {
+    setLoadingOrders(true)
+    const { data, error } = await supabase
+      .from('orders')
+      .select(
+        `
+        id,
+        order_number,
+        status,
+        opening_date,
+        due_date,
+        total_final,
+        clients:client_id ( name ),
+        sites:site_id ( city, state )
+      `
+      )
+      .order('opening_date', { ascending: false })
+
+    if (!error) {
+      setOrders(data)
+    } else {
+      console.error(error)
+      alert('Erro ao carregar ordens de serviço: ' + error.message)
+    }
+    setLoadingOrders(false)
   }
 
   useEffect(() => {
-    loadInitialData()
+    loadBaseData()
+    loadOrders()
   }, [])
 
-  // ---------- SERVIÇOS ----------
+  // --------- FORM PRINCIPAL DA OS ---------
+
+  function handleFormChange(e) {
+    const { name, value } = e.target
+    setForm(prev => ({ ...prev, [name]: value }))
+  }
+
+  function handleDiscountChange(e) {
+    let value = e.target.value.replace(',', '.')
+    if (value === '') value = 0
+    let num = Number(value)
+    if (isNaN(num)) num = 0
+    if (num < 0) num = 0
+    if (num > 8) num = 8 // máximo de 8%
+    setForm(prev => ({ ...prev, discount_percent: num }))
+  }
+
+  // --------- LINHAS DE SERVIÇO ---------
 
   function handleServiceChange(index, field, value) {
     setServiceLines(prev => {
@@ -112,7 +163,7 @@ function OrderFormPage() {
     setServiceLines(prev => prev.filter((_, i) => i !== index))
   }
 
-  // ---------- MATERIAIS ----------
+  // --------- LINHAS DE MATERIAL ---------
 
   function handleMaterialChange(index, field, value) {
     setMaterialLines(prev => {
@@ -123,8 +174,7 @@ function OrderFormPage() {
         line.product_id = value
         const product = products.find(p => p.id === value)
         line.unit = product?.unit || ''
-        // se quiser, pode usar product.price como sugestão
-        line.unit_price = product?.price ?? ''
+        line.unit_price = product?.price ?? '' // sugestão, mas pode ser alterado
       } else if (field === 'quantity') {
         line.quantity = value
       } else if (field === 'unit') {
@@ -155,22 +205,26 @@ function OrderFormPage() {
     setMaterialLines(prev => prev.filter((_, i) => i !== index))
   }
 
-  // ---------- CÁLCULOS DE TOTAIS ----------
+  // --------- CÁLCULOS DE TOTAL ---------
 
-  const totalServices = serviceLines.reduce((sum, line) => sum + (Number(line.line_total) || 0), 0)
-  const totalMaterials = materialLines.reduce((sum, line) => sum + (Number(line.total_cost) || 0), 0)
+  const totalServices = serviceLines.reduce((sum, l) => sum + (Number(l.line_total) || 0), 0)
+  const totalMaterials = materialLines.reduce((sum, l) => sum + (Number(l.total_cost) || 0), 0)
   const totalGeneral = totalServices + totalMaterials
   const discountValue = totalGeneral * (Number(form.discount_percent) || 0) / 100
   const totalFinal = totalGeneral - discountValue
 
-  // ---------- SALVAR OS ----------
+  // --------- SALVAR OS ---------
 
   async function handleSubmit(e) {
     e.preventDefault()
+    if (!form.client_id) {
+      alert('Selecione um cliente ou cadastre um novo.')
+      return
+    }
+
     setSaving(true)
 
     try {
-      // gera um número de OS simples (pode ser substituído por sequence no banco)
       const orderNumber = `OS-${Date.now().toString().slice(-6)}`
 
       const { data: orderData, error: orderError } = await supabase
@@ -180,7 +234,7 @@ function OrderFormPage() {
             order_number: orderNumber,
             client_id: form.client_id || null,
             site_id: form.site_id || null,
-            status: form.status || 'Aberta',
+            status: form.status || 'aberta',
             opening_date: form.opening_date || null,
             due_date: form.due_date || null,
             payment_type: form.payment_type || 'prazo',
@@ -206,7 +260,7 @@ function OrderFormPage() {
       const orderId = orderData.id
 
       // serviços
-      const servicePayload = serviceLines
+      const servicesPayload = serviceLines
         .filter(l => l.service_id && l.quantity)
         .map(l => ({
           order_id: orderId,
@@ -216,8 +270,8 @@ function OrderFormPage() {
           line_total: Number(l.line_total) || 0
         }))
 
-      if (servicePayload.length > 0) {
-        const { error } = await supabase.from('order_services').insert(servicePayload)
+      if (servicesPayload.length > 0) {
+        const { error } = await supabase.from('order_services').insert(servicesPayload)
         if (error) {
           console.error(error)
           alert('Erro ao salvar serviços da OS: ' + error.message)
@@ -226,7 +280,7 @@ function OrderFormPage() {
       }
 
       // materiais
-      const materialPayload = materialLines
+      const materialsPayload = materialLines
         .filter(l => l.product_id && l.quantity)
         .map(l => ({
           order_id: orderId,
@@ -238,8 +292,8 @@ function OrderFormPage() {
           total_cost: Number(l.total_cost) || 0
         }))
 
-      if (materialPayload.length > 0) {
-        const { error } = await supabase.from('order_materials').insert(materialPayload)
+      if (materialsPayload.length > 0) {
+        const { error } = await supabase.from('order_materials').insert(materialsPayload)
         if (error) {
           console.error(error)
           alert('Erro ao salvar materiais da OS: ' + error.message)
@@ -248,11 +302,12 @@ function OrderFormPage() {
       }
 
       alert('Ordem de serviço salva com sucesso!')
-      // limpa formulário
+
+      // resetar formulário
       setForm({
         client_id: '',
         site_id: '',
-        status: 'Aberta',
+        status: 'aberta',
         opening_date: '',
         due_date: '',
         payment_type: 'prazo',
@@ -262,12 +317,14 @@ function OrderFormPage() {
       })
       setServiceLines([{ service_id: '', quantity: '', unit_price: '', line_total: 0 }])
       setMaterialLines([{ product_id: '', quantity: '', unit: '', packaging: '', unit_price: '', total_cost: 0 }])
+
+      loadOrders()
     } finally {
       setSaving(false)
     }
   }
 
-  // ---------- CLIENTE RÁPIDO (MODAL) ----------
+  // --------- MODAL DE CLIENTE RÁPIDO ---------
 
   function handleQuickClientChange(e) {
     const { name, value } = e.target
@@ -277,7 +334,7 @@ function OrderFormPage() {
   async function handleSaveQuickClient(e) {
     e.preventDefault()
     if (!quickClient.name) {
-      alert('Informe ao menos o nome do cliente.')
+      alert('Informe pelo menos o nome do cliente.')
       return
     }
 
@@ -325,12 +382,36 @@ function OrderFormPage() {
     }
   }
 
+  // --------- HELPERS ---------
+
+  function formatDate(dateStr) {
+    if (!dateStr) return ''
+    const d = new Date(dateStr)
+    if (Number.isNaN(d.getTime())) return dateStr
+    const dia = String(d.getDate()).padStart(2, '0')
+    const mes = String(d.getMonth() + 1).padStart(2, '0')
+    const ano = d.getFullYear()
+    return `${dia}/${mes}/${ano}`
+  }
+
+  function getStatusLabel(value) {
+    const opt = STATUS_OPTIONS.find(o => o.value === value)
+    return opt ? opt.label : value
+  }
+
+  function getPaymentLabel(value) {
+    const opt = PAYMENT_OPTIONS.find(o => o.value === value)
+    return opt ? opt.label : value
+  }
+
+  // --------- RENDER ---------
+
   return (
     <div>
       <h2>Nova Ordem de Serviço</h2>
 
+      {/* FORMULÁRIO PRINCIPAL */}
       <form className="form-card" onSubmit={handleSubmit}>
-        {/* CABEÇALHO DA OS */}
         <div className="form-grid">
           <label>
             Cliente
@@ -380,10 +461,11 @@ function OrderFormPage() {
               value={form.status}
               onChange={handleFormChange}
             >
-              <option value="Aberta">Aberta</option>
-              <option value="Em andamento">Em andamento</option>
-              <option value="Concluída">Concluída</option>
-              <option value="Cancelada">Cancelada</option>
+              {STATUS_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
             </select>
           </label>
 
@@ -414,8 +496,11 @@ function OrderFormPage() {
               value={form.payment_type}
               onChange={handleFormChange}
             >
-              <option value="prazo">A prazo</option>
-              <option value="avista">À vista</option>
+              {PAYMENT_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
             </select>
           </label>
 
@@ -426,7 +511,7 @@ function OrderFormPage() {
               value={form.discount_percent}
               onChange={handleDiscountChange}
             />
-            <small>Máximo 8% e somente para vendas à vista.</small>
+            <small>Máximo 8% e apenas para vendas à vista.</small>
           </label>
 
           <label>
@@ -450,7 +535,7 @@ function OrderFormPage() {
           </label>
         </div>
 
-        {/* SERVIÇOS */}
+        {/* SERVIÇOS DA OS */}
         <section style={{ marginTop: '1.5rem' }}>
           <h3>Serviços da OS</h3>
           <div className="table-responsive">
@@ -484,22 +569,22 @@ function OrderFormPage() {
                     </td>
                     <td>
                       <input
+                        type="number"
+                        step="0.01"
                         value={line.quantity}
                         onChange={e =>
                           handleServiceChange(index, 'quantity', e.target.value)
                         }
-                        type="number"
-                        step="0.01"
                       />
                     </td>
                     <td>
                       <input
+                        type="number"
+                        step="0.01"
                         value={line.unit_price}
                         onChange={e =>
                           handleServiceChange(index, 'unit_price', e.target.value)
                         }
-                        type="number"
-                        step="0.01"
                       />
                     </td>
                     <td>{Number(line.line_total || 0).toFixed(2)}</td>
@@ -526,7 +611,7 @@ function OrderFormPage() {
           </button>
         </section>
 
-        {/* MATERIAIS */}
+        {/* MATERIAIS DA OS */}
         <section style={{ marginTop: '1.5rem' }}>
           <h3>Materiais da OS</h3>
           <div className="table-responsive">
@@ -555,7 +640,8 @@ function OrderFormPage() {
                         <option value="">Selecione</option>
                         {products.map(p => (
                           <option key={p.id} value={p.id}>
-                            {p.type} - {p.name} {p.color_code && `(${p.color_code})`}
+                            {p.type} - {p.name}{' '}
+                            {p.color_code && `(${p.color_code})`}
                           </option>
                         ))}
                       </select>
@@ -647,7 +733,56 @@ function OrderFormPage() {
         </div>
       </form>
 
-      {/* MODAL DE NOVO CLIENTE */}
+      {/* LISTA DE ORDENS DE SERVIÇO */}
+      <section style={{ marginTop: '2rem' }}>
+        <h2>Ordens de Serviço cadastradas</h2>
+
+        {loadingOrders ? (
+          <p>Carregando OS...</p>
+        ) : orders.length === 0 ? (
+          <p>Nenhuma ordem de serviço cadastrada.</p>
+        ) : (
+          <div className="table-responsive">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Nº OS</th>
+                  <th>Cliente</th>
+                  <th>Status</th>
+                  <th>Pagamento</th>
+                  <th>Abertura</th>
+                  <th>Previsão</th>
+                  <th>Total final (R$)</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map(o => (
+                  <tr key={o.id}>
+                    <td>{o.order_number}</td>
+                    <td>{o.clients?.name}</td>
+                    <td>{getStatusLabel(o.status)}</td>
+                    <td>{getPaymentLabel(o.payment_type)}</td>
+                    <td>{formatDate(o.opening_date)}</td>
+                    <td>{formatDate(o.due_date)}</td>
+                    <td>{Number(o.total_final || 0).toFixed(2)}</td>
+                    <td className="table-actions">
+                      <Link
+                        to={`/orders/${o.id}/print`}
+                        className="button-secondary button-xs"
+                      >
+                        Imprimir
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* MODAL NOVO CLIENTE RÁPIDO */}
       {showClientModal && (
         <div className="modal-backdrop">
           <div className="modal-card">
@@ -738,4 +873,4 @@ function OrderFormPage() {
   )
 }
 
-export default OrderFormPage
+export default OrdersPage
