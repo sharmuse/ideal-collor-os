@@ -387,9 +387,21 @@ textarea {
 }
 
 /* SELECT + BOTÃO AO LADO (cliente na OS) */
-
 .inline-field-with-button {
   display: flex;
-  gap: 0.4rem;
   align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+}
+
+/* o select ocupa todo o espaço disponível */
+.inline-field-with-button select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* o botão fica do tamanho do texto, sem quebrar linha estranha */
+.inline-field-with-button .button-xs {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
