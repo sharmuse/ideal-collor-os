@@ -96,8 +96,10 @@ function App() {
 
       <main className="app-main">
         <Routes>
+          {/* Login */}
           <Route path="/login" element={<LoginPage user={user} />} />
 
+          {/* Dashboard */}
           <Route
             path="/"
             element={
@@ -107,6 +109,7 @@ function App() {
             }
           />
 
+          {/* Clientes */}
           <Route
             path="/clients"
             element={
@@ -116,6 +119,7 @@ function App() {
             }
           />
 
+          {/* Obras */}
           <Route
             path="/sites"
             element={
@@ -125,6 +129,7 @@ function App() {
             }
           />
 
+          {/* Produtos */}
           <Route
             path="/products"
             element={
@@ -134,6 +139,7 @@ function App() {
             }
           />
 
+          {/* Serviços */}
           <Route
             path="/services"
             element={
@@ -143,6 +149,7 @@ function App() {
             }
           />
 
+          {/* Lista / criação de OS */}
           <Route
             path="/orders"
             element={
@@ -152,9 +159,10 @@ function App() {
             }
           />
 
-          {/* Impressão da OS */}
+          {/* Impressão da OS 
+              Aqui usamos /orders/:id porque é isso que o botão de imprimir usa */}
           <Route
-            path="/orders/:id/print"
+            path="/orders/:id"
             element={
               <ProtectedRoute user={user}>
                 <OrderPrintPage />
@@ -162,14 +170,14 @@ function App() {
             }
           />
 
-          {/* Assinatura eletrônica da OS 
-              Se quiser deixar pública para o cliente assinar sem login,
-              tire o ProtectedRoute e deixe só element={<OrderSignPage />} */}
+          {/* Assinatura eletrônica da OS
+              Deixamos sem ProtectedRoute para o cliente conseguir assinar pelo link */}
           <Route
             path="/orders/:id/sign"
             element={<OrderSignPage />}
           />
 
+          {/* Relatórios */}
           <Route
             path="/reports"
             element={
@@ -179,6 +187,7 @@ function App() {
             }
           />
 
+          {/* Backups */}
           <Route
             path="/backup"
             element={
@@ -188,6 +197,7 @@ function App() {
             }
           />
 
+          {/* 404 */}
           <Route path="/404" element={<NotFoundPage />} />
           <Route path="*" element={<Navigate to="/404" />} />
         </Routes>
