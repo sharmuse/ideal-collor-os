@@ -9,11 +9,12 @@ import ProductsPage from './pages/ProductsPage'
 import ServicesPage from './pages/ServicesPage'
 import OrdersPage from './pages/OrdersPage'
 import OrderPrintPage from './pages/OrderPrintPage'
+import OrderSignPage from './pages/OrderSignPage'
 import BackupPage from './pages/BackupPage'
 import ReportsPage from './pages/ReportsPage'
 import NotFoundPage from './pages/NotFoundPage'
 import ProtectedRoute from './components/ProtectedRoute'
-import logo from './assets/logo-idealcollor.png' // ou logo-idealcollor.png se for esse o nome
+import logo from './assets/logo-idealcollor.png'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -151,13 +152,22 @@ function App() {
             }
           />
 
+          {/* Impressão da OS */}
           <Route
-            path="/orders/:id"
+            path="/orders/:id/print"
             element={
               <ProtectedRoute user={user}>
                 <OrderPrintPage />
               </ProtectedRoute>
             }
+          />
+
+          {/* Assinatura eletrônica da OS 
+              Se quiser deixar pública para o cliente assinar sem login,
+              tire o ProtectedRoute e deixe só element={<OrderSignPage />} */}
+          <Route
+            path="/orders/:id/sign"
+            element={<OrderSignPage />}
           />
 
           <Route
