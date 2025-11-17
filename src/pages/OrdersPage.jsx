@@ -463,7 +463,7 @@ function OrdersPage() {
                   <td>{Number(o.total_final || 0).toFixed(2)}</td>
                   <td className="table-actions">
                     <Link
-                      to={`/orders/${o.id}/print`}
+                      to={`/orders/${o.id}`}
                       className="button-secondary button-xs"
                     >
                       Imprimir
@@ -500,3 +500,4 @@ function OrdersPage() {
 }
 
 export default OrdersPage;
+
