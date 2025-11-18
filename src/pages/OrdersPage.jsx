@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 
 const STATUS_OPTIONS = [
@@ -81,7 +81,7 @@ function OrdersPage() {
   const [editingOrderId, setEditingOrderId] = useState(null);
 
   // ------------------------------------------------
-  // Carregamento inicial (clientes, obras, serviços, produtos, OS)
+  // Carregamento inicial
   // ------------------------------------------------
   useEffect(() => {
     async function loadAll() {
@@ -185,7 +185,7 @@ function OrdersPage() {
     const lines = [...serviceLines];
     lines[index] = { ...lines[index], [field]: value };
 
-    // se mudou serviço, preenche valor unitário padrão (labor_price_unit)
+    // se mudou serviço, preenche valor unitário padrão
     if (field === "service_id") {
       const svc = services.find((s) => s.id === value);
       if (svc && svc.labor_price_unit != null) {
@@ -205,7 +205,7 @@ function OrdersPage() {
     const lines = [...materialLines];
     lines[index] = { ...lines[index], [field]: value };
 
-    // se mudou produto, preenche unidade e preço unitário padrão
+    // se mudou produto, preenche unidade e preço padrão
     if (field === "product_id") {
       const prod = products.find((p) => p.id === value);
       if (prod) {
@@ -243,7 +243,7 @@ function OrdersPage() {
   }
 
   // ------------------------------------------------
-  // Salvar OS (inserir/atualizar) + serviços + materiais
+  // Salvar OS
   // ------------------------------------------------
   async function handleSubmit(e) {
     e.preventDefault();
@@ -285,12 +285,10 @@ function OrdersPage() {
 
         if (error) throw error;
 
-        // remove serviços e materiais antigos para regravar
         await supabase.from("order_services").delete().eq("order_id", orderId);
         await supabase.from("order_materials").delete().eq("order_id", orderId);
       }
 
-      // monta linhas de serviços
       const servicesToInsert = serviceLines
         .filter((l) => l.service_id && l.quantity)
         .map((l) => ({
@@ -308,7 +306,6 @@ function OrdersPage() {
         if (error) throw error;
       }
 
-      // monta linhas de materiais
       const materialsToInsert = materialLines
         .filter((l) => l.product_id && l.quantity)
         .map((l) => ({
@@ -330,7 +327,6 @@ function OrdersPage() {
 
       alert("Ordem de Serviço salva com sucesso!");
 
-      // recarregar lista de OS
       const { data: ordersData, error: ordersError } = await supabase
         .from("orders")
         .select(
@@ -351,7 +347,6 @@ function OrdersPage() {
       if (ordersError) throw ordersError;
       setOrders(ordersData || []);
 
-      // limpa formulário
       setForm(emptyForm());
       setServiceLines([emptyServiceLine()]);
       setMaterialLines([emptyMaterialLine()]);
@@ -453,10 +448,8 @@ function OrdersPage() {
     if (!window.confirm("Tem certeza que deseja remover esta OS?")) return;
 
     try {
-      // remove filhos
       await supabase.from("order_services").delete().eq("order_id", orderId);
       await supabase.from("order_materials").delete().eq("order_id", orderId);
-      // remove OS
       const { error } = await supabase.from("orders").delete().eq("id", orderId);
       if (error) throw error;
 
@@ -468,23 +461,24 @@ function OrdersPage() {
   }
 
   // ------------------------------------------------
-  // Ações de navegação
+  // Navegação
   // ------------------------------------------------
   function handlePrint(orderId) {
-    navigate(`/orders/${orderId}`);
+    // CASA COM A ROTA: /orders/:id/print
+    navigate(`/orders/${orderId}/print`);
   }
 
   function handleSign(orderId) {
     navigate(`/orders/${orderId}/sign`);
   }
 
-  // ------------------------------------------------
-  // Render
-  // ------------------------------------------------
   const sitesForClient = form.client_id
     ? sites.filter((s) => s.client_id === form.client_id)
     : sites;
 
+  // ------------------------------------------------
+  // Render
+  // ------------------------------------------------
   return (
     <div className="page-container">
       <div className="page-header">
@@ -492,11 +486,9 @@ function OrdersPage() {
         <p>Cadastre e gerencie as OS da IDEAL COLLOR.</p>
       </div>
 
-      {loading && (
-        <p style={{ marginBottom: "1rem" }}>Carregando dados...</p>
-      )}
+      {loading && <p style={{ marginBottom: "1rem" }}>Carregando dados...</p>}
 
-      {/* Formulário de criação/edição */}
+      {/* Formulário */}
       <form onSubmit={handleSubmit} className="card" style={{ marginBottom: "2rem" }}>
         <h2>{editingOrderId ? "Editar Ordem de Serviço" : "Nova Ordem de Serviço"}</h2>
 
@@ -615,7 +607,7 @@ function OrdersPage() {
           />
         </div>
 
-        {/* Linhas de serviços */}
+        {/* Serviços */}
         <h3>Serviços</h3>
         <table className="table">
           <thead>
@@ -688,7 +680,7 @@ function OrdersPage() {
           Adicionar serviço
         </button>
 
-        {/* Linhas de materiais / produtos */}
+        {/* Materiais / Produtos */}
         <h3>Materiais / Produtos</h3>
         <table className="table">
           <thead>
