@@ -17,86 +17,180 @@ function OrderPrintPage() {
   const navigate = useNavigate();
 
   const [order, setOrder] = useState(null);
+  const [client, setClient] = useState(null);
+  const [site, setSite] = useState(null);
+  const [orderServices, setOrderServices] = useState([]);
+  const [orderMaterials, setOrderMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadOrder() {
       setLoading(true);
       try {
-        const { data, error } = await supabase
+        // 1) Carrega a OS
+        const { data: orderData, error: orderError } = await supabase
           .from("orders")
-          .select(
-            `
-            id,
-            order_number,
-            status,
-            payment_type,
-            opening_date,
-            due_date,
-            technical_notes,
-            commercial_notes,
-            total_services,
-            total_materials,
-            total_general,
-            total_final,
-            discount_percent,
-            client_signed,
-            client_signature_url,
-            clients:client_id (
-              name,
-              document,
-              phone,
-              whatsapp,
-              email,
-              street,
-              number,
-              district,
-              city,
-              state,
-              zip_code,
-              reference_point
-            ),
-            sites:site_id (
-              street,
-              number,
-              district,
-              city,
-              state,
-              zip_code,
-              main_service_type,
-              area_m2,
-              reference_point
-            ),
-            order_services(
-              quantity,
-              unit_price,
-              line_total,
-              services:service_id(
-                name,
-                unit,
-                labor_price_unit
-              )
-            ),
-            order_materials(
-              quantity,
-              unit,
-              packaging,
-              unit_price,
-              total_cost,
-              products:product_id(
-                type,
-                name,
-                color_code,
-                unit as product_unit
-              )
-            )
-          `
-          )
+          .select("*")
           .eq("id", id)
           .single();
 
-        if (error) throw error;
-        setOrder(data);
+        if (orderError || !orderData) {
+          console.error(orderError);
+          throw new Error("Ordem de Serviço não encontrada");
+        }
+
+        setOrder(orderData);
+
+        // 2) Busca cliente e obra (se existirem)
+        const clientPromise = orderData.client_id
+          ? supabase
+              .from("clients")
+              .select(
+                `
+                id,
+                name,
+                document,
+                phone,
+                whatsapp,
+                email,
+                street,
+                number,
+                district,
+                city,
+                state,
+                zip_code,
+                reference_point
+              `
+              )
+              .eq("id", orderData.client_id)
+              .single()
+          : { data: null, error: null };
+
+        const sitePromise = orderData.site_id
+          ? supabase
+              .from("sites")
+              .select(
+                `
+                id,
+                street,
+                number,
+                district,
+                city,
+                state,
+                zip_code,
+                main_service_type,
+                area_m2,
+                reference_point
+              `
+              )
+              .eq("id", orderData.site_id)
+              .single()
+          : { data: null, error: null };
+
+        // 3) Busca as linhas de serviços e materiais
+        const orderServicesPromise = supabase
+          .from("order_services")
+          .select("id, order_id, service_id, quantity, unit_price, line_total")
+          .eq("order_id", id);
+
+        const orderMaterialsPromise = supabase
+          .from("order_materials")
+          .select(
+            "id, order_id, product_id, quantity, unit, packaging, unit_price, total_cost"
+          )
+          .eq("order_id", id);
+
+        const [
+          { data: clientData },
+          { data: siteData },
+          { data: orderServicesData, error: orderServicesError },
+          { data: orderMaterialsData, error: orderMaterialsError },
+        ] = await Promise.all([
+          clientPromise,
+          sitePromise,
+          orderServicesPromise,
+          orderMaterialsPromise,
+        ]);
+
+        if (orderServicesError) {
+          console.error(orderServicesError);
+        }
+        if (orderMaterialsError) {
+          console.error(orderMaterialsError);
+        }
+
+        setClient(clientData || null);
+        setSite(siteData || null);
+
+        // 4) Para cada serviço, buscar os dados da tabela services
+        let servicesDetailed = [];
+        if (orderServicesData && orderServicesData.length > 0) {
+          const serviceIds = Array.from(
+            new Set(orderServicesData.map((s) => s.service_id).filter(Boolean))
+          );
+
+          if (serviceIds.length > 0) {
+            const { data: servicesData, error: servicesError } = await supabase
+              .from("services")
+              .select("id, name, unit, labor_price_unit")
+              .in("id", serviceIds);
+
+            if (servicesError) {
+              console.error(servicesError);
+              servicesDetailed = orderServicesData.map((s) => ({
+                ...s,
+                service: null,
+              }));
+            } else {
+              servicesDetailed = orderServicesData.map((s) => ({
+                ...s,
+                service: servicesData.find((sv) => sv.id === s.service_id) || null,
+              }));
+            }
+          } else {
+            servicesDetailed = orderServicesData.map((s) => ({
+              ...s,
+              service: null,
+            }));
+          }
+        }
+
+        setOrderServices(servicesDetailed);
+
+        // 5) Para cada material, buscar os dados da tabela products
+        let materialsDetailed = [];
+        if (orderMaterialsData && orderMaterialsData.length > 0) {
+          const productIds = Array.from(
+            new Set(orderMaterialsData.map((m) => m.product_id).filter(Boolean))
+          );
+
+          if (productIds.length > 0) {
+            const { data: productsData, error: productsError } = await supabase
+              .from("products")
+              .select("id, type, name, color_code, unit")
+              .in("id", productIds);
+
+            if (productsError) {
+              console.error(productsError);
+              materialsDetailed = orderMaterialsData.map((m) => ({
+                ...m,
+                product: null,
+              }));
+            } else {
+              materialsDetailed = orderMaterialsData.map((m) => ({
+                ...m,
+                product: productsData.find((p) => p.id === m.product_id) || null,
+              }));
+            }
+          } else {
+            materialsDetailed = orderMaterialsData.map((m) => ({
+              ...m,
+              product: null,
+            }));
+          }
+        }
+
+        setOrderMaterials(materialsDetailed);
       } catch (err) {
         console.error(err);
         alert("Erro ao carregar dados da Ordem de Serviço.");
@@ -129,9 +223,6 @@ function OrderPrintPage() {
     );
   }
 
-  const client = order.clients;
-  const site = order.sites;
-
   return (
     <div className="print-page">
       <div className="no-print" style={{ marginBottom: "1rem" }}>
@@ -151,30 +242,54 @@ function OrderPrintPage() {
           </div>
           <div>
             <h2>Ordem de Serviço</h2>
-            <p><strong>Nº OS:</strong> {order.order_number || order.id}</p>
-            <p><strong>Status:</strong> {order.status}</p>
+            <p>
+              <strong>Nº OS:</strong> {order.order_number || order.id}
+            </p>
+            <p>
+              <strong>Status:</strong> {order.status}
+            </p>
           </div>
         </header>
 
+        {/* CLIENTE */}
         <section className="print-section">
           <h3>Dados do Cliente</h3>
-          <p><strong>Nome:</strong> {client?.name}</p>
-          <p><strong>Documento:</strong> {client?.document}</p>
-          <p>
-            <strong>Telefone:</strong> {client?.phone}{" "}
-            {client?.whatsapp && <>| <strong>WhatsApp:</strong> {client.whatsapp}</>}
-          </p>
-          <p><strong>E-mail:</strong> {client?.email}</p>
-          <p>
-            <strong>Endereço:</strong>{" "}
-            {client?.street}, {client?.number} - {client?.district},{" "}
-            {client?.city}/{client?.state} - CEP {client?.zip_code}
-          </p>
-          {client?.reference_point && (
-            <p><strong>Referência:</strong> {client.reference_point}</p>
+          {client ? (
+            <>
+              <p>
+                <strong>Nome:</strong> {client.name}
+              </p>
+              <p>
+                <strong>Documento:</strong> {client.document}
+              </p>
+              <p>
+                <strong>Telefone:</strong> {client.phone}{" "}
+                {client.whatsapp && (
+                  <>
+                    | <strong>WhatsApp:</strong> {client.whatsapp}
+                  </>
+                )}
+              </p>
+              <p>
+                <strong>E-mail:</strong> {client.email}
+              </p>
+              <p>
+                <strong>Endereço:</strong>{" "}
+                {client.street}, {client.number} - {client.district},{" "}
+                {client.city}/{client.state} - CEP {client.zip_code}
+              </p>
+              {client.reference_point && (
+                <p>
+                  <strong>Referência:</strong> {client.reference_point}
+                </p>
+              )}
+            </>
+          ) : (
+            <p>Cliente não encontrado.</p>
           )}
         </section>
 
+        {/* OBRA */}
         <section className="print-section">
           <h3>Dados da Obra</h3>
           {site ? (
@@ -191,7 +306,9 @@ function OrderPrintPage() {
                 <strong>Área (m²):</strong> {site.area_m2}
               </p>
               {site.reference_point && (
-                <p><strong>Referência:</strong> {site.reference_point}</p>
+                <p>
+                  <strong>Referência:</strong> {site.reference_point}
+                </p>
               )}
             </>
           ) : (
@@ -199,9 +316,10 @@ function OrderPrintPage() {
           )}
         </section>
 
+        {/* SERVIÇOS */}
         <section className="print-section">
           <h3>Serviços</h3>
-          {order.order_services && order.order_services.length > 0 ? (
+          {orderServices && orderServices.length > 0 ? (
             <table className="table print-table">
               <thead>
                 <tr>
@@ -213,11 +331,11 @@ function OrderPrintPage() {
                 </tr>
               </thead>
               <tbody>
-                {order.order_services.map((s, idx) => (
-                  <tr key={idx}>
-                    <td>{s.services?.name}</td>
+                {orderServices.map((s) => (
+                  <tr key={s.id}>
+                    <td>{s.service?.name || "—"}</td>
                     <td>{s.quantity}</td>
-                    <td>{s.services?.unit}</td>
+                    <td>{s.service?.unit || "—"}</td>
                     <td>{Number(s.unit_price || 0).toFixed(2)}</td>
                     <td>{Number(s.line_total || 0).toFixed(2)}</td>
                   </tr>
@@ -229,9 +347,10 @@ function OrderPrintPage() {
           )}
         </section>
 
+        {/* MATERIAIS */}
         <section className="print-section">
           <h3>Materiais / Produtos</h3>
-          {order.order_materials && order.order_materials.length > 0 ? (
+          {orderMaterials && orderMaterials.length > 0 ? (
             <table className="table print-table">
               <thead>
                 <tr>
@@ -246,13 +365,13 @@ function OrderPrintPage() {
                 </tr>
               </thead>
               <tbody>
-                {order.order_materials.map((m, idx) => (
-                  <tr key={idx}>
-                    <td>{m.products?.type}</td>
-                    <td>{m.products?.name}</td>
-                    <td>{m.products?.color_code}</td>
+                {orderMaterials.map((m) => (
+                  <tr key={m.id}>
+                    <td>{m.product?.type || "—"}</td>
+                    <td>{m.product?.name || "—"}</td>
+                    <td>{m.product?.color_code || "—"}</td>
                     <td>{m.quantity}</td>
-                    <td>{m.unit || m.products?.product_unit}</td>
+                    <td>{m.unit || m.product?.unit || "—"}</td>
                     <td>{m.packaging}</td>
                     <td>{Number(m.unit_price || 0).toFixed(2)}</td>
                     <td>{Number(m.total_cost || 0).toFixed(2)}</td>
@@ -265,6 +384,7 @@ function OrderPrintPage() {
           )}
         </section>
 
+        {/* TOTAIS */}
         <section className="print-section">
           <h3>Totais</h3>
           <p>
@@ -289,6 +409,7 @@ function OrderPrintPage() {
           </p>
         </section>
 
+        {/* OBSERVAÇÕES */}
         <section className="print-section">
           <h3>Observações</h3>
           {order.technical_notes && (
@@ -306,6 +427,7 @@ function OrderPrintPage() {
           )}
         </section>
 
+        {/* ASSINATURA */}
         <section className="print-section">
           <h3>Assinatura do Cliente</h3>
           {order.client_signed && order.client_signature_url ? (
