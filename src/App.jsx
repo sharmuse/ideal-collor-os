@@ -177,9 +177,9 @@ function App() {
             }
           />
 
-          {/* Impressão da OS (rota exclusiva para impressão) */}
+          {/* Impressão da OS - precisa estar logado */}
           <Route
-            path="/orders/print/:id"
+            path="/orders/:id/print"
             element={
               <ProtectedRoute user={user}>
                 <OrderPrintPage />
