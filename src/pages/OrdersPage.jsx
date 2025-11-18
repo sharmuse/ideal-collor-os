@@ -31,7 +31,6 @@ const emptyForm = () => ({
   technical_notes: "",
   commercial_notes: "",
   discount_percent: 0,
-  discount_value: 0,
   total_services: 0,
   total_materials: 0,
   total_general: 0,
@@ -81,47 +80,62 @@ function OrdersPage() {
   const [materialLines, setMaterialLines] = useState([emptyMaterialLine()]);
   const [editingOrderId, setEditingOrderId] = useState(null);
 
-  // carregamento inicial
+  // ------------------------------------------------
+  // Carregamento inicial (clientes, obras, serviços, produtos, OS)
+  // ------------------------------------------------
   useEffect(() => {
     async function loadAll() {
       setLoading(true);
-
-      const [clientsRes, sitesRes, servicesRes, productsRes, ordersRes] =
-        await Promise.all([
-          supabase.from("clients").select("*").order("name", { ascending: true }),
-          supabase.from("sites").select("*").order("created_at", { ascending: false }),
-          supabase.from("services").select("*").order("name", { ascending: true }),
-          supabase.from("products").select("*").order("name", { ascending: true }),
-          supabase
-            .from("orders")
-            .select(
+      try {
+        const [clientsRes, sitesRes, servicesRes, productsRes, ordersRes] =
+          await Promise.all([
+            supabase.from("clients").select("*").order("name", { ascending: true }),
+            supabase.from("sites").select("*").order("created_at", { ascending: false }),
+            supabase.from("services").select("*").order("name", { ascending: true }),
+            supabase.from("products").select("*").order("name", { ascending: true }),
+            supabase
+              .from("orders")
+              .select(
+                `
+                id,
+                order_number,
+                status,
+                payment_type,
+                opening_date,
+                due_date,
+                total_final,
+                clients:client_id ( name ),
+                sites:site_id ( street, city, state )
               `
-              id,
-              order_number,
-              status,
-              payment_type,
-              opening_date,
-              due_date,
-              total_final,
-              clients:client_id ( name ),
-              sites:site_id ( street, city, state )
-            `
-            )
-            .order("created_at", { ascending: false }),
-        ]);
+              )
+              .order("opening_date", { ascending: false }),
+          ]);
 
-      if (!clientsRes.error) setClients(clientsRes.data || []);
-      if (!sitesRes.error) setSites(sitesRes.data || []);
-      if (!servicesRes.error) setServices(servicesRes.data || []);
-      if (!productsRes.error) setProducts(productsRes.data || []);
-      if (!ordersRes.error) setOrders(ordersRes.data || []);
+        if (clientsRes.error) throw clientsRes.error;
+        if (sitesRes.error) throw sitesRes.error;
+        if (servicesRes.error) throw servicesRes.error;
+        if (productsRes.error) throw productsRes.error;
+        if (ordersRes.error) throw ordersRes.error;
 
-      setLoading(false);
+        setClients(clientsRes.data || []);
+        setSites(sitesRes.data || []);
+        setServices(servicesRes.data || []);
+        setProducts(productsRes.data || []);
+        setOrders(ordersRes.data || []);
+      } catch (err) {
+        console.error(err);
+        alert("Erro ao carregar dados iniciais das Ordens de Serviço.");
+      } finally {
+        setLoading(false);
+      }
     }
 
     loadAll();
   }, []);
 
+  // ------------------------------------------------
+  // Cálculo de totais
+  // ------------------------------------------------
   function recalcTotals(nextServiceLines, nextMaterialLines, nextForm) {
     const servicesTotal = nextServiceLines.reduce(
       (sum, line) => sum + (Number(line.line_total) || 0),
@@ -144,21 +158,23 @@ function OrdersPage() {
       discountPercent = 0;
     }
 
-    const discountValue = totalGeneral * (discountPercent / 100);
+    const discountValue = (totalGeneral * discountPercent) / 100;
     const totalFinal = totalGeneral - discountValue;
 
     setForm((prev) => ({
       ...prev,
       ...nextForm,
+      discount_percent: discountPercent,
       total_services: servicesTotal,
       total_materials: materialsTotal,
       total_general: totalGeneral,
-      discount_percent: discountPercent,
-      discount_value: discountValue,
       total_final: totalFinal,
     }));
   }
 
+  // ------------------------------------------------
+  // Handlers de formulário
+  // ------------------------------------------------
   function handleFormChange(e) {
     const { name, value } = e.target;
     const nextForm = { ...form, [name]: value };
@@ -168,6 +184,14 @@ function OrdersPage() {
   function handleServiceLineChange(index, field, value) {
     const lines = [...serviceLines];
     lines[index] = { ...lines[index], [field]: value };
+
+    // se mudou serviço, preenche valor unitário padrão (labor_price_unit)
+    if (field === "service_id") {
+      const svc = services.find((s) => s.id === value);
+      if (svc && svc.labor_price_unit != null) {
+        lines[index].unit_price = svc.labor_price_unit;
+      }
+    }
 
     const qty = Number(lines[index].quantity) || 0;
     const price = Number(lines[index].unit_price) || 0;
@@ -180,6 +204,15 @@ function OrdersPage() {
   function handleMaterialLineChange(index, field, value) {
     const lines = [...materialLines];
     lines[index] = { ...lines[index], [field]: value };
+
+    // se mudou produto, preenche unidade e preço unitário padrão
+    if (field === "product_id") {
+      const prod = products.find((p) => p.id === value);
+      if (prod) {
+        if (prod.unit) lines[index].unit = prod.unit;
+        if (prod.price_unit != null) lines[index].unit_price = prod.price_unit;
+      }
+    }
 
     const qty = Number(lines[index].quantity) || 0;
     const price = Number(lines[index].unit_price) || 0;
@@ -209,6 +242,9 @@ function OrdersPage() {
     recalcTotals(serviceLines, lines, form);
   }
 
+  // ------------------------------------------------
+  // Salvar OS (inserir/atualizar) + serviços + materiais
+  // ------------------------------------------------
   async function handleSubmit(e) {
     e.preventDefault();
     setSaving(true);
@@ -228,9 +264,8 @@ function OrdersPage() {
         total_services: form.total_services || 0,
         total_materials: form.total_materials || 0,
         total_general: form.total_general || 0,
-        discount_percent: form.discount_percent || 0,
-        discount_value: form.discount_value || 0,
         total_final: form.total_final || 0,
+        discount_percent: form.discount_percent || 0,
       };
 
       if (!orderId) {
@@ -239,6 +274,7 @@ function OrdersPage() {
           .insert(payload)
           .select("id")
           .single();
+
         if (error) throw error;
         orderId = data.id;
       } else {
@@ -246,13 +282,15 @@ function OrdersPage() {
           .from("orders")
           .update(payload)
           .eq("id", orderId);
+
         if (error) throw error;
 
-        // limpar serviços & materiais existentes antes de recriar
+        // remove serviços e materiais antigos para regravar
         await supabase.from("order_services").delete().eq("order_id", orderId);
         await supabase.from("order_materials").delete().eq("order_id", orderId);
       }
 
+      // monta linhas de serviços
       const servicesToInsert = serviceLines
         .filter((l) => l.service_id && l.quantity)
         .map((l) => ({
@@ -270,6 +308,7 @@ function OrdersPage() {
         if (error) throw error;
       }
 
+      // monta linhas de materiais
       const materialsToInsert = materialLines
         .filter((l) => l.product_id && l.quantity)
         .map((l) => ({
@@ -307,24 +346,28 @@ function OrdersPage() {
           sites:site_id ( street, city, state )
         `
         )
-        .order("created_at", { ascending: false });
+        .order("opening_date", { ascending: false });
 
-      if (!ordersError) setOrders(ordersData || []);
+      if (ordersError) throw ordersError;
+      setOrders(ordersData || []);
 
-      // limpar formulário
+      // limpa formulário
       setForm(emptyForm());
       setServiceLines([emptyServiceLine()]);
       setMaterialLines([emptyMaterialLine()]);
       setEditingOrderId(null);
     } catch (err) {
       console.error(err);
-      alert("Erro ao salvar Ordem de Serviço.");
+      alert("Erro ao salvar a Ordem de Serviço.");
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleEditOrder(order) {
+  // ------------------------------------------------
+  // Editar OS
+  // ------------------------------------------------
+  async function handleEditOrder(orderId) {
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -332,16 +375,29 @@ function OrdersPage() {
         .select(
           `
           *,
-          order_services ( id, service_id, quantity, unit_price, line_total ),
-          order_materials ( id, product_id, quantity, unit_price, total_cost, unit, packaging )
+          order_services (
+            service_id,
+            quantity,
+            unit_price,
+            line_total
+          ),
+          order_materials (
+            product_id,
+            quantity,
+            unit,
+            packaging,
+            unit_price,
+            total_cost
+          )
         `
         )
-        .eq("id", order.id)
+        .eq("id", orderId)
         .single();
 
       if (error) throw error;
 
-      setEditingOrderId(data.id);
+      setEditingOrderId(orderId);
+
       setForm({
         id: data.id,
         client_id: data.client_id || "",
@@ -353,7 +409,6 @@ function OrdersPage() {
         technical_notes: data.technical_notes || "",
         commercial_notes: data.commercial_notes || "",
         discount_percent: data.discount_percent || 0,
-        discount_value: data.discount_value || 0,
         total_services: data.total_services || 0,
         total_materials: data.total_materials || 0,
         total_general: data.total_general || 0,
@@ -376,57 +431,412 @@ function OrdersPage() {
           ? data.order_materials.map((m) => ({
               product_id: m.product_id || "",
               quantity: m.quantity ?? "",
+              unit: m.unit ?? "",
+              packaging: m.packaging ?? "",
               unit_price: m.unit_price ?? "",
               total_cost: m.total_cost ?? 0,
-              unit: m.unit || "",
-              packaging: m.packaging || "",
             }))
           : [emptyMaterialLine()]
       );
     } catch (err) {
       console.error(err);
-      alert("Erro ao carregar dados da OS para edição.");
+      alert("Erro ao carregar OS para edição.");
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleDeleteOrder(id) {
-    if (!window.confirm("Deseja realmente remover esta Ordem de Serviço?"))
-      return;
+  // ------------------------------------------------
+  // Remover OS
+  // ------------------------------------------------
+  async function handleDeleteOrder(orderId) {
+    if (!window.confirm("Tem certeza que deseja remover esta OS?")) return;
 
     try {
-      await supabase.from("order_services").delete().eq("order_id", id);
-      await supabase.from("order_materials").delete().eq("order_id", id);
-
-      const { error } = await supabase.from("orders").delete().eq("id", id);
+      // remove filhos
+      await supabase.from("order_services").delete().eq("order_id", orderId);
+      await supabase.from("order_materials").delete().eq("order_id", orderId);
+      // remove OS
+      const { error } = await supabase.from("orders").delete().eq("id", orderId);
       if (error) throw error;
 
-      setOrders((prev) => prev.filter((o) => o.id !== id));
-      alert("Ordem de Serviço removida.");
+      setOrders((prev) => prev.filter((o) => o.id !== orderId));
     } catch (err) {
       console.error(err);
       alert("Erro ao remover OS.");
     }
   }
 
-  if (loading) {
-    return <p>Carregando ordens de serviço...</p>;
+  // ------------------------------------------------
+  // Ações de navegação
+  // ------------------------------------------------
+  function handlePrint(orderId) {
+    navigate(`/orders/${orderId}`);
   }
 
-  return (
-    <div className="page">
-      <h1>Ordens de Serviço</h1>
+  function handleSign(orderId) {
+    navigate(`/orders/${orderId}/sign`);
+  }
 
-      {/* FORMULÁRIO NOVA OS */}
-      {/* ... (mantém igual ao que você já tinha, não mexi nessa parte) ... */}
+  // ------------------------------------------------
+  // Render
+  // ------------------------------------------------
+  const sitesForClient = form.client_id
+    ? sites.filter((s) => s.client_id === form.client_id)
+    : sites;
+
+  return (
+    <div className="page-container">
+      <div className="page-header">
+        <h1>Ordens de Serviço</h1>
+        <p>Cadastre e gerencie as OS da IDEAL COLLOR.</p>
+      </div>
+
+      {loading && (
+        <p style={{ marginBottom: "1rem" }}>Carregando dados...</p>
+      )}
+
+      {/* Formulário de criação/edição */}
+      <form onSubmit={handleSubmit} className="card" style={{ marginBottom: "2rem" }}>
+        <h2>{editingOrderId ? "Editar Ordem de Serviço" : "Nova Ordem de Serviço"}</h2>
+
+        <div className="form-grid">
+          <div className="form-group">
+            <label>Cliente</label>
+            <select
+              name="client_id"
+              value={form.client_id}
+              onChange={handleFormChange}
+              required
+            >
+              <option value="">Selecione</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>Obra / Local</label>
+            <select
+              name="site_id"
+              value={form.site_id}
+              onChange={handleFormChange}
+            >
+              <option value="">Selecione</option>
+              {sitesForClient.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.street} - {s.city}/{s.state}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>Status</label>
+            <select
+              name="status"
+              value={form.status}
+              onChange={handleFormChange}
+            >
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>Pagamento</label>
+            <select
+              name="payment_type"
+              value={form.payment_type}
+              onChange={handleFormChange}
+            >
+              {PAYMENT_OPTIONS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>Abertura</label>
+            <input
+              type="date"
+              name="opening_date"
+              value={form.opening_date || ""}
+              onChange={handleFormChange}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Previsão</label>
+            <input
+              type="date"
+              name="due_date"
+              value={form.due_date || ""}
+              onChange={handleFormChange}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Desconto (%)</label>
+            <input
+              type="number"
+              step="0.1"
+              name="discount_percent"
+              value={form.discount_percent}
+              onChange={handleFormChange}
+            />
+            <small>Máx. 8% e só para pagamento à vista.</small>
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label>Observações técnicas</label>
+          <textarea
+            name="technical_notes"
+            value={form.technical_notes}
+            onChange={handleFormChange}
+          />
+        </div>
+
+        <div className="form-group">
+          <label>Observações comerciais</label>
+          <textarea
+            name="commercial_notes"
+            value={form.commercial_notes}
+            onChange={handleFormChange}
+          />
+        </div>
+
+        {/* Linhas de serviços */}
+        <h3>Serviços</h3>
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Serviço</th>
+              <th>Quantidade</th>
+              <th>Valor unitário (R$)</th>
+              <th>Total (R$)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {serviceLines.map((line, idx) => (
+              <tr key={idx}>
+                <td>
+                  <select
+                    value={line.service_id}
+                    onChange={(e) =>
+                      handleServiceLineChange(idx, "service_id", e.target.value)
+                    }
+                  >
+                    <option value="">Selecione</option>
+                    {services.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={line.quantity}
+                    onChange={(e) =>
+                      handleServiceLineChange(idx, "quantity", e.target.value)
+                    }
+                  />
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={line.unit_price}
+                    onChange={(e) =>
+                      handleServiceLineChange(idx, "unit_price", e.target.value)
+                    }
+                  />
+                </td>
+                <td>{(Number(line.line_total) || 0).toFixed(2)}</td>
+                <td>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => removeServiceLine(idx)}
+                  >
+                    Remover
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={addServiceLine}
+          style={{ marginBottom: "1rem" }}
+        >
+          Adicionar serviço
+        </button>
+
+        {/* Linhas de materiais / produtos */}
+        <h3>Materiais / Produtos</h3>
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Produto / Material</th>
+              <th>Quantidade</th>
+              <th>Unidade</th>
+              <th>Embalagem</th>
+              <th>Valor unitário (R$)</th>
+              <th>Total (R$)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {materialLines.map((line, idx) => (
+              <tr key={idx}>
+                <td>
+                  <select
+                    value={line.product_id}
+                    onChange={(e) =>
+                      handleMaterialLineChange(idx, "product_id", e.target.value)
+                    }
+                  >
+                    <option value="">Selecione</option>
+                    {products.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.type} - {p.name} ({p.color_code})
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={line.quantity}
+                    onChange={(e) =>
+                      handleMaterialLineChange(idx, "quantity", e.target.value)
+                    }
+                  />
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    value={line.unit}
+                    onChange={(e) =>
+                      handleMaterialLineChange(idx, "unit", e.target.value)
+                    }
+                  />
+                </td>
+                <td>
+                  <select
+                    value={line.packaging}
+                    onChange={(e) =>
+                      handleMaterialLineChange(idx, "packaging", e.target.value)
+                    }
+                  >
+                    <option value="">Selecione</option>
+                    {PACKAGING_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={line.unit_price}
+                    onChange={(e) =>
+                      handleMaterialLineChange(idx, "unit_price", e.target.value)
+                    }
+                  />
+                </td>
+                <td>{(Number(line.total_cost) || 0).toFixed(2)}</td>
+                <td>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => removeMaterialLine(idx)}
+                  >
+                    Remover
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={addMaterialLine}
+          style={{ marginBottom: "1rem" }}
+        >
+          Adicionar material
+        </button>
+
+        {/* Totais */}
+        <div className="totals-grid">
+          <div>
+            <strong>Total serviços:</strong>{" "}
+            R$ {(Number(form.total_services) || 0).toFixed(2)}
+          </div>
+          <div>
+            <strong>Total materiais:</strong>{" "}
+            R$ {(Number(form.total_materials) || 0).toFixed(2)}
+          </div>
+          <div>
+            <strong>Total geral:</strong>{" "}
+            R$ {(Number(form.total_general) || 0).toFixed(2)}
+          </div>
+          <div>
+            <strong>Total final:</strong>{" "}
+            R$ {(Number(form.total_final) || 0).toFixed(2)}
+          </div>
+        </div>
+
+        <button type="submit" className="btn btn-primary" disabled={saving}>
+          {saving
+            ? "Salvando..."
+            : editingOrderId
+            ? "Salvar alterações"
+            : "Salvar Ordem de Serviço"}
+        </button>
+        {editingOrderId && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ marginLeft: "0.5rem" }}
+            onClick={() => {
+              setForm(emptyForm());
+              setServiceLines([emptyServiceLine()]);
+              setMaterialLines([emptyMaterialLine()]);
+              setEditingOrderId(null);
+            }}
+          >
+            Cancelar edição
+          </button>
+        )}
+      </form>
 
       {/* Lista de OS */}
-      <div className="list-card">
+      <div className="card">
         <h2>Ordens de Serviço cadastradas</h2>
 
         {orders.length === 0 ? (
-          <p>Nenhuma OS cadastrada ainda.</p>
+          <p>Nenhuma OS cadastrada.</p>
         ) : (
           <table className="table">
             <thead>
@@ -455,35 +865,37 @@ function OrdersPage() {
                   <td>
                     {
                       PAYMENT_OPTIONS.find((p) => p.value === o.payment_type)
-                        ?.label
+                        ?.label || o.payment_type
                     }
                   </td>
                   <td>{formatDate(o.opening_date)}</td>
                   <td>{formatDate(o.due_date)}</td>
-                  <td>{Number(o.total_final || 0).toFixed(2)}</td>
-                  <td className="table-actions">
-                    <Link
-                      to={`/orders/${o.id}`}
-                      className="button-secondary button-xs"
+                  <td>{(Number(o.total_final) || 0).toFixed(2)}</td>
+                  <td>
+                    <button
+                      className="btn btn-secondary"
+                      type="button"
+                      onClick={() => handlePrint(o.id)}
                     >
                       Imprimir
-                    </Link>
-                    <Link
-                      to={`/orders/${o.id}/sign`}
-                      className="button-secondary button-xs"
+                    </button>{" "}
+                    <button
+                      className="btn btn-secondary"
+                      type="button"
+                      onClick={() => handleSign(o.id)}
                     >
                       Assinar
-                    </Link>
+                    </button>{" "}
                     <button
+                      className="btn btn-secondary"
                       type="button"
-                      className="button-secondary button-xs"
-                      onClick={() => handleEditOrder(o)}
+                      onClick={() => handleEditOrder(o.id)}
                     >
                       Editar
-                    </button>
+                    </button>{" "}
                     <button
+                      className="btn btn-danger"
                       type="button"
-                      className="button-danger button-xs"
                       onClick={() => handleDeleteOrder(o.id)}
                     >
                       Remover
@@ -500,4 +912,3 @@ function OrdersPage() {
 }
 
 export default OrdersPage;
-
