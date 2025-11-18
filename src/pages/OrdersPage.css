@@ -1,99 +1,153 @@
 /* src/pages/OrdersPage.css */
 
+/* Layout geral da página de Ordens */
 .orders-page {
-  max-width: 1150px;
+  max-width: 1100px;
   margin: 0 auto;
-  padding: 24px 16px 40px;
+  padding: 1.5rem 1rem 2rem;
 }
 
-.os-title {
+/* Título principal */
+.orders-page h1 {
   font-size: 1.8rem;
-  font-weight: 600;
-  color: #0b3558;
-  margin-bottom: 18px;
+  margin-bottom: 1.25rem;
+  color: #1a3e6f; /* azul Ideal Collor */
 }
 
-.os-card {
+/* Cards de seção (Nova OS, Totais, Lista) */
+.orders-card {
   background: #ffffff;
   border-radius: 6px;
-  border: 1px solid #d0d7de;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
-  padding: 18px 20px 20px;
-  margin-bottom: 24px;
+  border: 1px solid #dde3ee;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
-.os-section-title {
+/* Títulos internos das seções */
+.orders-card h2 {
   font-size: 1.2rem;
+  margin-bottom: 1rem;
+  color: #1a3e6f;
+}
+
+/* Formulário: linhas e grupos */
+.orders-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.orders-form-group {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 180px;
+}
+
+.orders-form-group label {
+  font-size: 0.875rem;
   font-weight: 600;
-  color: #0b3558;
-  margin-bottom: 12px;
+  margin-bottom: 0.25rem;
+  color: #374151;
 }
 
-.os-grid {
+.orders-form-group input,
+.orders-form-group select,
+.orders-form-group textarea {
+  padding: 0.4rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+  font-size: 0.9rem;
+}
+
+/* Campos somente leitura (totais, etc.) */
+.orders-form-group input[readonly] {
+  background-color: #f4f6fb;
+}
+
+/* Linha de botões (Salvar / Limpar etc.) */
+.orders-buttons {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px 18px;
-  margin-bottom: 12px;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
 }
 
-.os-grid .form-group {
-  flex: 1 1 220px;
-  min-width: 210px;
-}
-
-.orders-page .form-group label {
-  font-weight: 500;
-  margin-bottom: 4px;
-}
-
-.os-grid-totals .form-group {
-  max-width: 220px;
-}
-
-.os-actions {
-  margin-top: 16px;
-  display: flex;
-  gap: 10px;
-}
-
-.os-actions-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.os-table thead th {
-  background-color: #0b3558;
+/* Botões padrão (segue estilo dos já usados) */
+.btn-primary {
+  background-color: #1a3e6f;
   color: #ffffff;
-  border-color: #0b3558;
-  font-weight: 500;
+  border: 1px solid #1a3e6f;
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
 }
 
-.os-table tbody td {
-  vertical-align: middle;
+.btn-primary:hover {
+  background-color: #204a82;
 }
 
-.os-money-col {
+.btn-secondary {
+  background-color: #ffffff;
+  color: #1a3e6f;
+  border: 1px solid #1a3e6f;
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.btn-secondary:hover {
+  background-color: #f1f5f9;
+}
+
+/* Tabelas (Serviços, Materiais, OS cadastradas) */
+.orders-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.orders-table th,
+.orders-table td {
+  border: 1px solid #e2e8f0;
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+}
+
+.orders-table th {
+  background-color: #f4f6fb;
+  font-weight: 600;
+}
+
+.orders-table tbody tr:nth-child(even) {
+  background-color: #f9fafb;
+}
+
+/* Linhas de serviços / materiais */
+.orders-line-input {
+  width: 100%;
+  padding: 0.25rem 0.4rem;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+  font-size: 0.85rem;
+}
+
+/* Campo subtotal alinhado à direita */
+.orders-line-subtotal {
   text-align: right;
-  font-variant-numeric: tabular-nums;
 }
 
-/* Responsivo */
-@media (max-width: 768px) {
-  .orders-page {
-    padding: 16px 10px 24px;
-  }
+/* Botão X de remover linha */
+.orders-remove-line-btn {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+}
 
-  .os-card {
-    padding: 14px 12px 16px;
-  }
-
-  .os-grid .form-group {
-    min-width: 100%;
-  }
-
-  .os-actions-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
+/* Campo de observações */
+.orders-textarea {
+  min-height: 70px;
+  resize: vertical;
 }
