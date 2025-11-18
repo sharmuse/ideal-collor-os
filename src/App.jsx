@@ -1,61 +1,67 @@
-import React, { useEffect, useState } from 'react'
-import { Routes, Route, Navigate, Link, useNavigate } from 'react-router-dom'
-import { supabase } from './supabaseClient'
+import React, { useEffect, useState } from "react";
+import {
+  Routes,
+  Route,
+  Navigate,
+  Link,
+  useNavigate,
+} from "react-router-dom";
+import { supabase } from "./supabaseClient";
 
-import LoginPage from './pages/LoginPage'
-import DashboardPage from './pages/DashboardPage'
-import ClientsPage from './pages/ClientsPage'
-import SitesPage from './pages/SitesPage'
-import ProductsPage from './pages/ProductsPage'
-import ServicesPage from './pages/ServicesPage'
-import OrdersPage from './pages/OrdersPage'
-import OrderPrintPage from './pages/OrderPrintPage'
-import OrderSignPage from './pages/OrderSignPage'
-import BackupPage from './pages/BackupPage'
-import ReportsPage from './pages/ReportsPage'
-import NotFoundPage from './pages/NotFoundPage'
-import ProtectedRoute from './components/ProtectedRoute'
+import LoginPage from "./pages/LoginPage";
+import DashboardPage from "./pages/DashboardPage";
+import ClientsPage from "./pages/ClientsPage";
+import SitesPage from "./pages/SitesPage";
+import ProductsPage from "./pages/ProductsPage";
+import ServicesPage from "./pages/ServicesPage";
+import OrdersPage from "./pages/OrdersPage";
+import OrderPrintPage from "./pages/OrderPrintPage";
+import OrderSignPage from "./pages/OrderSignPage";
+import BackupPage from "./pages/BackupPage";
+import ReportsPage from "./pages/ReportsPage";
+import NotFoundPage from "./pages/NotFoundPage";
 
-import logo from './assets/logo-idealcollor.png'
+import ProtectedRoute from "./components/ProtectedRoute";
+import logo from "./assets/logo-idealcollor.png";
 
 function App() {
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const navigate = useNavigate()
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
-  // Verifica sessão atual ao carregar o app
+  // Verifica sessão do usuário ao carregar o app
   useEffect(() => {
     async function getSession() {
-      const { data, error } = await supabase.auth.getUser()
+      const { data, error } = await supabase.auth.getUser();
       if (!error) {
-        setUser(data.user ?? null)
+        setUser(data.user ?? null);
       }
-      setLoading(false)
+      setLoading(false);
     }
 
-    getSession()
+    getSession();
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        setUser(session?.user ?? null)
+        setUser(session?.user ?? null);
 
-        if (event === 'SIGNED_OUT') {
-          navigate('/login')
+        if (event === "SIGNED_OUT") {
+          navigate("/login");
         }
 
-        if (event === 'SIGNED_IN') {
-          navigate('/')
+        if (event === "SIGNED_IN") {
+          navigate("/");
         }
       }
-    )
+    );
 
     return () => {
-      listener.subscription.unsubscribe()
-    }
-  }, [navigate])
+      listener.subscription.unsubscribe();
+    };
+  }, [navigate]);
 
   async function handleLogout() {
-    await supabase.auth.signOut()
+    await supabase.auth.signOut();
   }
 
   if (loading) {
@@ -63,7 +69,7 @@ function App() {
       <div className="centered">
         <p>Carregando...</p>
       </div>
-    )
+    );
   }
 
   return (
@@ -74,7 +80,9 @@ function App() {
             <img src={logo} alt="Ideal Collor" className="brand-logo" />
             <div className="brand-text">
               <span className="brand-title">IDEAL COLLOR</span>
-              <span className="brand-subtitle">Sistema de Ordem de Serviço</span>
+              <span className="brand-subtitle">
+                Sistema de Ordem de Serviço
+              </span>
             </div>
           </div>
 
@@ -169,9 +177,9 @@ function App() {
             }
           />
 
-          {/* Impressão da OS */}
+          {/* Impressão da OS (rota exclusiva para impressão) */}
           <Route
-            path="/orders/:id/print"
+            path="/orders/print/:id"
             element={
               <ProtectedRoute user={user}>
                 <OrderPrintPage />
@@ -179,7 +187,7 @@ function App() {
             }
           />
 
-          {/* Assinatura eletrônica da OS (pública) */}
+          {/* Assinatura eletrônica da OS (pública, sem login) */}
           <Route path="/orders/:id/sign" element={<OrderSignPage />} />
 
           {/* Relatórios */}
@@ -202,13 +210,13 @@ function App() {
             }
           />
 
-          {/* 404 interna */}
+          {/* 404 interna do sistema */}
           <Route path="/404" element={<NotFoundPage />} />
           <Route path="*" element={<Navigate to="/404" />} />
         </Routes>
       </main>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;
