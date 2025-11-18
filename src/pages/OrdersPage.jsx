@@ -1,133 +1,64 @@
+// src/pages/OrdersPage.jsx
 import React, { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
+import "./OrdersPage.css";
 
-const STATUS_OPTIONS = [
-  { value: "aberta", label: "Aberta" },
-  { value: "em_andamento", label: "Em andamento" },
-  { value: "concluida", label: "Concluída" },
-  { value: "cancelada", label: "Cancelada" },
-];
-
-const PAYMENT_OPTIONS = [
-  { value: "prazo", label: "A prazo" },
-  { value: "avista", label: "À vista" },
-];
-
-const PACKAGING_OPTIONS = [
-  { value: "Saco", label: "Saco" },
-  { value: "Balde", label: "Balde" },
-  { value: "Outro", label: "Outro" },
-];
-
-const emptyForm = () => ({
-  id: null,
-  order_number: "",
-  client_id: "",
-  site_id: "",
-  status: "aberta",
-  payment_type: "prazo",
-  opening_date: "",
-  due_date: "",
-  technical_notes: "",
-  commercial_notes: "",
-  discount_percent: 0,
-  discount_value: 0,
-  total_services: 0,
-  total_materials: 0,
-  total_general: 0,
-  total_final: 0,
-});
-
-const emptyServiceLine = () => ({
-  service_id: "",
-  quantity: "",
-  unit_price: "",
-  line_total: 0,
-});
-
-const emptyMaterialLine = () => ({
-  product_id: "",
-  quantity: "",
-  unit: "",
-  packaging: "",
-  unit_price: "",
-  total_cost: 0,
-});
+function formatDateBR(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
 
 function OrdersPage() {
   const navigate = useNavigate();
 
+  // Listas vindas do banco
   const [clients, setClients] = useState([]);
   const [sites, setSites] = useState([]);
   const [services, setServices] = useState([]);
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  // Estado do formulário
+  const [editingId, setEditingId] = useState(null);
+  const [clientId, setClientId] = useState("");
+  const [siteId, setSiteId] = useState("");
+  const [status, setStatus] = useState("Aberta");
+  const [paymentType, setPaymentType] = useState("A prazo");
+  const [openingDate, setOpeningDate] = useState(
+    new Date().toISOString().slice(0, 10)
+  );
+  const [dueDate, setDueDate] = useState("");
+  const [discountPercent, setDiscountPercent] = useState("0");
+  const [technicalNotes, setTechnicalNotes] = useState("");
+  const [commercialNotes, setCommercialNotes] = useState("");
 
-  const [form, setForm] = useState(emptyForm);
-  const [serviceLines, setServiceLines] = useState([emptyServiceLine()]);
-  const [materialLines, setMaterialLines] = useState([emptyMaterialLine()]);
-  const [editingOrderId, setEditingOrderId] = useState(null);
+  // Linhas de serviços e materiais
+  const [serviceItems, setServiceItems] = useState([
+    { service_id: "", quantity: "", unit_price: "", line_total: 0 },
+  ]);
 
-  // ----------------------------------------------------------------------------
-  // Helpers
-  // ----------------------------------------------------------------------------
+  const [materialItems, setMaterialItems] = useState([
+    {
+      product_id: "",
+      quantity: "",
+      unit: "",
+      packaging: "",
+      unit_price: "",
+      total_cost: 0,
+    },
+  ]);
 
-  function formatDate(dateStr) {
-    if (!dateStr) return "";
-    const d = new Date(dateStr);
-    if (Number.isNaN(d.getTime())) return dateStr;
-    const dd = String(d.getDate()).padStart(2, "0");
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const yyyy = d.getFullYear();
-    return `${dd}/${mm}/${yyyy}`;
-  }
+  const [loading, setLoading] = useState(false);
 
-  function generateOrderNumber() {
-    // Algo simples tipo "OS-269314"
-    const num = Math.floor(100000 + Math.random() * 900000);
-    return `OS-${num}`;
-  }
-
-  function recalcTotals(nextServiceLines, nextMaterialLines, nextForm) {
-    const servicesTotal = nextServiceLines.reduce(
-      (sum, line) => sum + (Number(line.line_total) || 0),
-      0
-    );
-    const materialsTotal = nextMaterialLines.reduce(
-      (sum, line) => sum + (Number(line.total_cost) || 0),
-      0
-    );
-    const totalGeneral = servicesTotal + materialsTotal;
-
-    let discountPercent = Number(nextForm.discount_percent) || 0;
-    if (discountPercent < 0) discountPercent = 0;
-    if (discountPercent > 100) discountPercent = 100;
-
-    const discountValue = (totalGeneral * discountPercent) / 100;
-    const totalFinal = totalGeneral - discountValue;
-
-    setForm((prev) => ({
-      ...prev,
-      ...nextForm,
-      discount_percent: discountPercent,
-      discount_value: discountValue,
-      total_services: servicesTotal,
-      total_materials: materialsTotal,
-      total_general: totalGeneral,
-      total_final: totalFinal,
-    }));
-  }
-
-  // ----------------------------------------------------------------------------
-  // Carrega dados básicos
-  // ----------------------------------------------------------------------------
-
+  // -------------------- CARREGAR DADOS INICIAIS --------------------
   useEffect(() => {
-    async function loadAll() {
+    async function loadData() {
       setLoading(true);
       try {
         const [clientsRes, sitesRes, servicesRes, productsRes, ordersRes] =
@@ -135,7 +66,7 @@ function OrdersPage() {
             supabase.from("clients").select("id, name").order("name"),
             supabase
               .from("sites")
-              .select("id, client_id, street, number, city, state")
+              .select("id, client_id, street, number, district, city, state")
               .order("created_at", { ascending: false }),
             supabase
               .from("services")
@@ -149,15 +80,15 @@ function OrdersPage() {
               .from("orders")
               .select(
                 `
-              id,
-              order_number,
-              status,
-              payment_type,
-              opening_date,
-              due_date,
-              total_final,
-              clients:client_id ( name )
-            `
+                id,
+                order_number,
+                status,
+                payment_type,
+                opening_date,
+                due_date,
+                total_final,
+                clients:client_id ( name )
+              `
               )
               .order("created_at", { ascending: false }),
           ]);
@@ -175,199 +106,301 @@ function OrdersPage() {
         setOrders(ordersRes.data || []);
       } catch (err) {
         console.error(err);
-        alert("Erro ao carregar dados iniciais das Ordens de Serviço.");
+        alert("Erro ao carregar dados iniciais.");
       } finally {
         setLoading(false);
       }
     }
 
-    loadAll();
+    loadData();
   }, []);
 
-  // ----------------------------------------------------------------------------
-  // Manipulação de formulário
-  // ----------------------------------------------------------------------------
+  // -------------------- HANDLERS DOS SERVIÇOS --------------------
+  function handleServiceChange(index, field, value) {
+    setServiceItems((prev) => {
+      const items = [...prev];
+      let row = { ...items[index] };
 
-  function handleFormChange(e) {
-    const { name, value } = e.target;
-    const nextForm = { ...form, [name]: value };
-    recalcTotals(serviceLines, materialLines, nextForm);
-  }
-
-  function handleServiceLineChange(index, field, value) {
-    const lines = serviceLines.map((line, i) =>
-      i === index ? { ...line, [field]: value } : line
-    );
-
-    // Se selecionar o serviço, podemos pegar um valor padrão
-    if (field === "service_id") {
-      const svc = services.find((s) => s.id === value);
-      if (svc) {
-        lines[index].unit_price =
-          lines[index].unit_price || svc.labor_price_unit || "";
+      if (field === "service_id") {
+        row.service_id = value;
+        const svc = services.find((s) => s.id === value);
+        if (svc) {
+          row.unit_price = svc.labor_price_unit || 0;
+        }
+      } else if (field === "quantity" || field === "unit_price") {
+        row[field] = value;
+      } else {
+        row[field] = value;
       }
-    }
 
-    // Atualiza total da linha
-    const qty = Number(lines[index].quantity) || 0;
-    const unitPrice = Number(lines[index].unit_price) || 0;
-    lines[index].line_total = qty * unitPrice;
+      const qty = parseFloat(row.quantity) || 0;
+      const price = parseFloat(row.unit_price) || 0;
+      row.line_total = qty * price;
 
-    setServiceLines(lines);
-    recalcTotals(lines, materialLines, form);
+      items[index] = row;
+      return items;
+    });
   }
 
-  function addServiceLine() {
-    setServiceLines((prev) => [...prev, emptyServiceLine()]);
+  function addServiceRow() {
+    setServiceItems((prev) => [
+      ...prev,
+      { service_id: "", quantity: "", unit_price: "", line_total: 0 },
+    ]);
   }
 
-  function removeServiceLine(index) {
-    const lines = serviceLines.filter((_, i) => i !== index);
-    setServiceLines(lines.length ? lines : [emptyServiceLine()]);
-    recalcTotals(lines, materialLines, form);
+  function removeServiceRow(index) {
+    setServiceItems((prev) => prev.filter((_, i) => i !== index));
   }
 
-  function handleMaterialLineChange(index, field, value) {
-    const lines = materialLines.map((line, i) =>
-      i === index ? { ...line, [field]: value } : line
-    );
+  // -------------------- HANDLERS DOS MATERIAIS --------------------
+  function handleMaterialChange(index, field, value) {
+    setMaterialItems((prev) => {
+      const items = [...prev];
+      let row = { ...items[index] };
 
-    if (field === "product_id") {
-      const product = products.find((p) => p.id === value);
-      if (product) {
-        lines[index].unit = lines[index].unit || product.unit || "";
-        lines[index].unit_price =
-          lines[index].unit_price || product.price_unit || "";
+      if (field === "product_id") {
+        row.product_id = value;
+        const prod = products.find((p) => p.id === value);
+        if (prod) {
+          // Preenche preço e unidade com o que está cadastrado no produto
+          row.unit_price = prod.price_unit || 0;
+          if (!row.unit) row.unit = prod.unit || "";
+        }
+      } else if (field === "quantity" || field === "unit_price") {
+        row[field] = value;
+      } else {
+        row[field] = value;
       }
-    }
 
-    const qty = Number(lines[index].quantity) || 0;
-    const unitPrice = Number(lines[index].unit_price) || 0;
-    lines[index].total_cost = qty * unitPrice;
+      const qty = parseFloat(row.quantity) || 0;
+      const price = parseFloat(row.unit_price) || 0;
+      row.total_cost = qty * price;
 
-    setMaterialLines(lines);
-    recalcTotals(serviceLines, lines, form);
+      items[index] = row;
+      return items;
+    });
   }
 
-  function addMaterialLine() {
-    setMaterialLines((prev) => [...prev, emptyMaterialLine()]);
+  function addMaterialRow() {
+    setMaterialItems((prev) => [
+      ...prev,
+      {
+        product_id: "",
+        quantity: "",
+        unit: "",
+        packaging: "",
+        unit_price: "",
+        total_cost: 0,
+      },
+    ]);
   }
 
-  function removeMaterialLine(index) {
-    const lines = materialLines.filter((_, i) => i !== index);
-    setMaterialLines(lines.length ? lines : [emptyMaterialLine()]);
-    recalcTotals(serviceLines, lines, form);
+  function removeMaterialRow(index) {
+    setMaterialItems((prev) => prev.filter((_, i) => i !== index));
   }
 
+  // -------------------- CÁLCULO DOS TOTAIS --------------------
+  const totalServices = serviceItems.reduce(
+    (sum, item) => sum + (parseFloat(item.line_total) || 0),
+    0
+  );
+  const totalMaterials = materialItems.reduce(
+    (sum, item) => sum + (parseFloat(item.total_cost) || 0),
+    0
+  );
+  const totalGeneral = totalServices + totalMaterials;
+  const discountValue =
+    totalGeneral * ((parseFloat(discountPercent) || 0) / 100);
+  const totalFinal = totalGeneral - discountValue;
+
+  // -------------------- LIMPAR FORMULÁRIO --------------------
   function resetForm() {
-    setForm(emptyForm());
-    setServiceLines([emptyServiceLine()]);
-    setMaterialLines([emptyMaterialLine()]);
-    setEditingOrderId(null);
+    setEditingId(null);
+    setClientId("");
+    setSiteId("");
+    setStatus("Aberta");
+    setPaymentType("A prazo");
+    setOpeningDate(new Date().toISOString().slice(0, 10));
+    setDueDate("");
+    setDiscountPercent("0");
+    setTechnicalNotes("");
+    setCommercialNotes("");
+    setServiceItems([
+      { service_id: "", quantity: "", unit_price: "", line_total: 0 },
+    ]);
+    setMaterialItems([
+      {
+        product_id: "",
+        quantity: "",
+        unit: "",
+        packaging: "",
+        unit_price: "",
+        total_cost: 0,
+      },
+    ]);
   }
 
-  // ----------------------------------------------------------------------------
-  // Salvar / Editar / Remover
-  // ----------------------------------------------------------------------------
-
-  async function handleSubmit(e) {
+  // -------------------- SALVAR ORDEM --------------------
+  async function handleSave(e) {
     e.preventDefault();
-    setSaving(true);
+    if (!clientId) {
+      alert("Selecione um cliente.");
+      return;
+    }
+
+    setLoading(true);
 
     try {
-      let orderId = editingOrderId;
+      // Gera número OS se não existir (bem simples)
+      const generatedNumber = `OS-${Math.floor(
+        100000 + Math.random() * 900000
+      )}`;
 
-      const payload = {
-        client_id: form.client_id || null,
-        site_id: form.site_id || null,
-        status: form.status,
-        payment_type: form.payment_type,
-        opening_date: form.opening_date || null,
-        due_date: form.due_date || null,
-        technical_notes: form.technical_notes || null,
-        commercial_notes: form.commercial_notes || null,
-        total_services: Number(form.total_services) || 0,
-        total_materials: Number(form.total_materials) || 0,
-        total_general: Number(form.total_general) || 0,
-        discount_percent: Number(form.discount_percent) || 0,
-        discount_value: Number(form.discount_value) || 0,
-        total_final: Number(form.total_final) || 0,
-      };
-
-      if (!orderId) {
-        // nova OS
-        const orderNumber = generateOrderNumber();
-        payload.order_number = orderNumber;
-
-        const { data, error } = await supabase
+      if (!editingId) {
+        // NOVA OS
+        const { data: orderInserted, error: orderError } = await supabase
           .from("orders")
-          .insert(payload)
-          .select("id, order_number")
+          .insert([
+            {
+              order_number: generatedNumber,
+              client_id: clientId,
+              site_id: siteId || null,
+              status,
+              payment_type: paymentType,
+              opening_date: openingDate || null,
+              due_date: dueDate || null,
+              technical_notes: technicalNotes || null,
+              commercial_notes: commercialNotes || null,
+              total_services: totalServices,
+              total_materials: totalMaterials,
+              total_general: totalGeneral,
+              discount_percent: parseFloat(discountPercent) || 0,
+              discount_value: discountValue,
+              total_final: totalFinal,
+            },
+          ])
+          .select()
           .single();
 
-        if (error) throw error;
-        orderId = data.id;
+        if (orderError) throw orderError;
+
+        const orderId = orderInserted.id;
+
+        // Inserir serviços
+        const servicesToInsert = serviceItems
+          .filter((s) => s.service_id && s.quantity)
+          .map((s) => ({
+            order_id: orderId,
+            service_id: s.service_id,
+            quantity: parseFloat(s.quantity) || 0,
+            unit_price: parseFloat(s.unit_price) || 0,
+            line_total: parseFloat(s.line_total) || 0,
+          }));
+
+        if (servicesToInsert.length > 0) {
+          const { error: osError } = await supabase
+            .from("order_services")
+            .insert(servicesToInsert);
+          if (osError) throw osError;
+        }
+
+        // Inserir materiais
+        const materialsToInsert = materialItems
+          .filter((m) => m.product_id && m.quantity)
+          .map((m) => ({
+            order_id: orderId,
+            product_id: m.product_id,
+            quantity: parseFloat(m.quantity) || 0,
+            unit: m.unit || null,
+            packaging: m.packaging || null,
+            unit_price: parseFloat(m.unit_price) || 0,
+            total_cost: parseFloat(m.total_cost) || 0,
+          }));
+
+        if (materialsToInsert.length > 0) {
+          const { error: omError } = await supabase
+            .from("order_materials")
+            .insert(materialsToInsert);
+          if (omError) throw omError;
+        }
+
+        alert("Ordem de Serviço criada com sucesso!");
+
       } else {
-        // edição de OS
-        const { error } = await supabase
+        // EDITAR OS EXISTENTE
+        const orderId = editingId;
+
+        const { error: updateError } = await supabase
           .from("orders")
-          .update(payload)
+          .update({
+            client_id: clientId,
+            site_id: siteId || null,
+            status,
+            payment_type: paymentType,
+            opening_date: openingDate || null,
+            due_date: dueDate || null,
+            technical_notes: technicalNotes || null,
+            commercial_notes: commercialNotes || null,
+            total_services: totalServices,
+            total_materials: totalMaterials,
+            total_general: totalGeneral,
+            discount_percent: parseFloat(discountPercent) || 0,
+            discount_value: discountValue,
+            total_final: totalFinal,
+          })
           .eq("id", orderId);
 
-        if (error) throw error;
+        if (updateError) throw updateError;
 
-        // apaga serviços e materiais antigos para recriar
+        // Remove tudo e insere de novo (mais simples)
         await supabase.from("order_services").delete().eq("order_id", orderId);
         await supabase
           .from("order_materials")
           .delete()
           .eq("order_id", orderId);
+
+        const servicesToInsert = serviceItems
+          .filter((s) => s.service_id && s.quantity)
+          .map((s) => ({
+            order_id: orderId,
+            service_id: s.service_id,
+            quantity: parseFloat(s.quantity) || 0,
+            unit_price: parseFloat(s.unit_price) || 0,
+            line_total: parseFloat(s.line_total) || 0,
+          }));
+
+        if (servicesToInsert.length > 0) {
+          const { error: osError } = await supabase
+            .from("order_services")
+            .insert(servicesToInsert);
+          if (osError) throw osError;
+        }
+
+        const materialsToInsert = materialItems
+          .filter((m) => m.product_id && m.quantity)
+          .map((m) => ({
+            order_id: orderId,
+            product_id: m.product_id,
+            quantity: parseFloat(m.quantity) || 0,
+            unit: m.unit || null,
+            packaging: m.packaging || null,
+            unit_price: parseFloat(m.unit_price) || 0,
+            total_cost: parseFloat(m.total_cost) || 0,
+          }));
+
+        if (materialsToInsert.length > 0) {
+          const { error: omError } = await supabase
+            .from("order_materials")
+            .insert(materialsToInsert);
+          if (omError) throw omError;
+        }
+
+        alert("Ordem de Serviço atualizada com sucesso!");
       }
 
-      // Insere linhas de serviços
-      const servicePayload = serviceLines
-        .filter((l) => l.service_id && Number(l.quantity) > 0)
-        .map((l) => ({
-          order_id: orderId,
-          service_id: l.service_id,
-          quantity: Number(l.quantity) || 0,
-          unit_price: Number(l.unit_price) || 0,
-          line_total: Number(l.line_total) || 0,
-        }));
-
-      if (servicePayload.length) {
-        const { error: svcErr } = await supabase
-          .from("order_services")
-          .insert(servicePayload);
-        if (svcErr) throw svcErr;
-      }
-
-      // Insere linhas de materiais
-      const materialPayload = materialLines
-        .filter((l) => l.product_id && Number(l.quantity) > 0)
-        .map((l) => ({
-          order_id: orderId,
-          product_id: l.product_id,
-          quantity: Number(l.quantity) || 0,
-          unit: l.unit || null,
-          packaging: l.packaging || null,
-          unit_price: Number(l.unit_price) || 0,
-          total_cost: Number(l.total_cost) || 0,
-        }));
-
-      if (materialPayload.length) {
-        const { error: matErr } = await supabase
-          .from("order_materials")
-          .insert(materialPayload);
-        if (matErr) throw matErr;
-      }
-
-      alert("Ordem de Serviço salva com sucesso!");
-
-      resetForm();
-
-      // recarrega lista de OS
-      const { data: ordersData, error: ordersErr } = await supabase
+      // Recarrega listagem
+      const { data: ordersRes, error: ordersErr } = await supabase
         .from("orders")
         .select(
           `
@@ -384,16 +417,20 @@ function OrdersPage() {
         .order("created_at", { ascending: false });
 
       if (ordersErr) throw ordersErr;
-      setOrders(ordersData || []);
+      setOrders(ordersRes || []);
+
+      resetForm();
     } catch (err) {
       console.error(err);
-      alert("Erro ao salvar a Ordem de Serviço.");
+      alert("Erro ao salvar Ordem de Serviço.");
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   }
 
+  // -------------------- EDITAR / REMOVER / AÇÕES --------------------
   async function handleEdit(orderId) {
+    setLoading(true);
     try {
       const { data, error } = await supabase
         .from("orders")
@@ -410,11 +447,6 @@ function OrdersPage() {
           technical_notes,
           commercial_notes,
           discount_percent,
-          discount_value,
-          total_services,
-          total_materials,
-          total_general,
-          total_final,
           order_services(
             service_id,
             quantity,
@@ -436,109 +468,106 @@ function OrdersPage() {
 
       if (error) throw error;
 
-      setEditingOrderId(data.id);
-      setForm({
-        id: data.id,
-        order_number: data.order_number,
-        client_id: data.client_id || "",
-        site_id: data.site_id || "",
-        status: data.status || "aberta",
-        payment_type: data.payment_type || "prazo",
-        opening_date: data.opening_date || "",
-        due_date: data.due_date || "",
-        technical_notes: data.technical_notes || "",
-        commercial_notes: data.commercial_notes || "",
-        discount_percent: data.discount_percent || 0,
-        discount_value: data.discount_value || 0,
-        total_services: data.total_services || 0,
-        total_materials: data.total_materials || 0,
-        total_general: data.total_general || 0,
-        total_final: data.total_final || 0,
-      });
-
-      setServiceLines(
-        (data.order_services || []).length
+      setEditingId(data.id);
+      setClientId(data.client_id || "");
+      setSiteId(data.site_id || "");
+      setStatus(data.status || "Aberta");
+      setPaymentType(data.payment_type || "A prazo");
+      setOpeningDate(
+        data.opening_date
+          ? new Date(data.opening_date).toISOString().slice(0, 10)
+          : ""
+      );
+      setDueDate(
+        data.due_date
+          ? new Date(data.due_date).toISOString().slice(0, 10)
+          : ""
+      );
+      setTechnicalNotes(data.technical_notes || "");
+      setCommercialNotes(data.commercial_notes || "");
+      setDiscountPercent(
+        data.discount_percent !== null ? String(data.discount_percent) : "0"
+      );
+      setServiceItems(
+        (data.order_services || []).length > 0
           ? data.order_services.map((s) => ({
-              service_id: s.service_id || "",
-              quantity: s.quantity || "",
-              unit_price: s.unit_price || "",
-              line_total: s.line_total || 0,
+              service_id: s.service_id,
+              quantity: s.quantity ?? "",
+              unit_price: s.unit_price ?? "",
+              line_total: s.line_total ?? 0,
             }))
-          : [emptyServiceLine()]
+          : [{ service_id: "", quantity: "", unit_price: "", line_total: 0 }]
       );
-
-      setMaterialLines(
-        (data.order_materials || []).length
+      setMaterialItems(
+        (data.order_materials || []).length > 0
           ? data.order_materials.map((m) => ({
-              product_id: m.product_id || "",
-              quantity: m.quantity || "",
-              unit: m.unit || "",
-              packaging: m.packaging || "",
-              unit_price: m.unit_price || "",
-              total_cost: m.total_cost || 0,
+              product_id: m.product_id,
+              quantity: m.quantity ?? "",
+              unit: m.unit ?? "",
+              packaging: m.packaging ?? "",
+              unit_price: m.unit_price ?? "",
+              total_cost: m.total_cost ?? 0,
             }))
-          : [emptyMaterialLine()]
+          : [
+              {
+                product_id: "",
+                quantity: "",
+                unit: "",
+                packaging: "",
+                unit_price: "",
+                total_cost: 0,
+              },
+            ]
       );
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       console.error(err);
       alert("Erro ao carregar dados da OS para edição.");
+    } finally {
+      setLoading(false);
     }
   }
 
-  async function handleDelete(orderId) {
+  async function handleRemove(orderId) {
     if (!window.confirm("Deseja realmente remover esta Ordem de Serviço?"))
       return;
 
+    setLoading(true);
     try {
       await supabase.from("order_services").delete().eq("order_id", orderId);
       await supabase.from("order_materials").delete().eq("order_id", orderId);
-      const { error } = await supabase
-        .from("orders")
-        .delete()
-        .eq("id", orderId);
+      const { error } = await supabase.from("orders").delete().eq("id", orderId);
       if (error) throw error;
 
       setOrders((prev) => prev.filter((o) => o.id !== orderId));
+      if (editingId === orderId) resetForm();
     } catch (err) {
       console.error(err);
-      alert("Erro ao remover a Ordem de Serviço.");
+      alert("Erro ao remover Ordem de Serviço.");
+    } finally {
+      setLoading(false);
     }
   }
 
-  // ----------------------------------------------------------------------------
-  // Render
-  // ----------------------------------------------------------------------------
-
-  if (loading) {
-    return (
-      <div className="centered">
-        <p>Carregando Ordens de Serviço...</p>
-      </div>
-    );
-  }
-
-  // filtra obras pelo cliente selecionado (se quiser)
-  const filteredSites = form.client_id
-    ? sites.filter((s) => s.client_id === form.client_id)
-    : sites;
-
+  // -------------------- RENDER --------------------
   return (
-    <div className="page-container">
-      <h1>Ordens de Serviço</h1>
+    <div className="orders-page">
+      <h1 className="os-title">Ordens de Serviço</h1>
 
-      {/* FORMULÁRIO */}
-      <div className="card">
-        <h2>{editingOrderId ? "Editar OS" : "Nova Ordem de Serviço"}</h2>
+      <div className="os-card">
+        <h2 className="os-section-title">
+          {editingId ? "Editar Ordem de Serviço" : "Nova Ordem de Serviço"}
+        </h2>
 
-        <form onSubmit={handleSubmit}>
-          {/* Linha 1: Cliente / Obra */}
-          <div className="form-row">
+        <form onSubmit={handleSave}>
+          {/* DADOS PRINCIPAIS */}
+          <div className="os-grid">
             <div className="form-group">
               <label>Cliente</label>
               <select
-                name="client_id"
-                value={form.client_id}
-                onChange={handleFormChange}
+                className="form-control"
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
                 required
               >
                 <option value="">Selecione...</option>
@@ -553,14 +582,14 @@ function OrdersPage() {
             <div className="form-group">
               <label>Obra</label>
               <select
-                name="site_id"
-                value={form.site_id}
-                onChange={handleFormChange}
+                className="form-control"
+                value={siteId}
+                onChange={(e) => setSiteId(e.target.value)}
               >
                 <option value="">Selecione...</option>
-                {filteredSites.map((s) => (
+                {sites.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.street}, {s.number} - {s.city}/{s.state}
+                    {s.street}, {s.number} - {s.district} ({s.city}/{s.state})
                   </option>
                 ))}
               </select>
@@ -569,43 +598,36 @@ function OrdersPage() {
             <div className="form-group">
               <label>Status</label>
               <select
-                name="status"
-                value={form.status}
-                onChange={handleFormChange}
+                className="form-control"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
               >
-                {STATUS_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
+                <option value="Aberta">Aberta</option>
+                <option value="Em andamento">Em andamento</option>
+                <option value="Concluída">Concluída</option>
+                <option value="Cancelada">Cancelada</option>
               </select>
             </div>
 
             <div className="form-group">
               <label>Pagamento</label>
               <select
-                name="payment_type"
-                value={form.payment_type}
-                onChange={handleFormChange}
+                className="form-control"
+                value={paymentType}
+                onChange={(e) => setPaymentType(e.target.value)}
               >
-                {PAYMENT_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
+                <option value="A prazo">A prazo</option>
+                <option value="À vista">À vista</option>
               </select>
             </div>
-          </div>
 
-          {/* Datas */}
-          <div className="form-row">
             <div className="form-group">
               <label>Data de abertura</label>
               <input
                 type="date"
-                name="opening_date"
-                value={form.opening_date || ""}
-                onChange={handleFormChange}
+                className="form-control"
+                value={openingDate}
+                onChange={(e) => setOpeningDate(e.target.value)}
               />
             </div>
 
@@ -613,9 +635,9 @@ function OrdersPage() {
               <label>Previsão de conclusão</label>
               <input
                 type="date"
-                name="due_date"
-                value={form.due_date || ""}
-                onChange={handleFormChange}
+                className="form-control"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
               />
             </div>
 
@@ -623,303 +645,313 @@ function OrdersPage() {
               <label>Desconto (%)</label>
               <input
                 type="number"
-                step="0.1"
+                className="form-control"
                 min="0"
                 max="100"
-                name="discount_percent"
-                value={form.discount_percent}
-                onChange={handleFormChange}
+                step="0.1"
+                value={discountPercent}
+                onChange={(e) => setDiscountPercent(e.target.value)}
               />
             </div>
           </div>
 
-          {/* Observações */}
-          <div className="form-row">
-            <div className="form-group full">
-              <label>Observações técnicas</label>
-              <textarea
-                name="technical_notes"
-                value={form.technical_notes}
-                onChange={handleFormChange}
-                rows={2}
-              />
-            </div>
+          <div className="form-group">
+            <label>Observações técnicas</label>
+            <textarea
+              className="form-control"
+              rows={2}
+              value={technicalNotes}
+              onChange={(e) => setTechnicalNotes(e.target.value)}
+            />
           </div>
 
-          <div className="form-row">
-            <div className="form-group full">
-              <label>Observações comerciais</label>
-              <textarea
-                name="commercial_notes"
-                value={form.commercial_notes}
-                onChange={handleFormChange}
-                rows={2}
-              />
-            </div>
+          <div className="form-group">
+            <label>Observações comerciais</label>
+            <textarea
+              className="form-control"
+              rows={2}
+              value={commercialNotes}
+              onChange={(e) => setCommercialNotes(e.target.value)}
+            />
           </div>
 
           {/* SERVIÇOS */}
-          <h3>Serviços</h3>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Serviço</th>
-                <th>Qtd</th>
-                <th>Vlr unit. (R$)</th>
-                <th>Subtotal (R$)</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {serviceLines.map((line, index) => (
-                <tr key={index}>
-                  <td>
-                    <select
-                      value={line.service_id}
-                      onChange={(e) =>
-                        handleServiceLineChange(
-                          index,
-                          "service_id",
-                          e.target.value
-                        )
-                      }
-                    >
-                      <option value="">Selecione...</option>
-                      {services.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={line.quantity}
-                      onChange={(e) =>
-                        handleServiceLineChange(
-                          index,
-                          "quantity",
-                          e.target.value
-                        )
-                      }
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={line.unit_price}
-                      onChange={(e) =>
-                        handleServiceLineChange(
-                          index,
-                          "unit_price",
-                          e.target.value
-                        )
-                      }
-                    />
-                  </td>
-                  <td>{Number(line.line_total || 0).toFixed(2)}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="btn btn-danger btn-sm"
-                      onClick={() => removeServiceLine(index)}
-                    >
-                      X
-                    </button>
-                  </td>
+          <hr />
+          <h3 className="os-section-title">Serviços</h3>
+          <div className="table-responsive">
+            <table className="table table-sm os-table">
+              <thead>
+                <tr>
+                  <th style={{ width: "40%" }}>Serviço</th>
+                  <th style={{ width: "10%" }}>Qtd</th>
+                  <th style={{ width: "15%" }}>Vlr unit. (R$)</th>
+                  <th style={{ width: "15%" }}>Subtotal (R$)</th>
+                  <th style={{ width: "10%" }}></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {serviceItems.map((row, index) => (
+                  <tr key={index}>
+                    <td>
+                      <select
+                        className="form-control form-control-sm"
+                        value={row.service_id}
+                        onChange={(e) =>
+                          handleServiceChange(
+                            index,
+                            "service_id",
+                            e.target.value
+                          )
+                        }
+                      >
+                        <option value="">Selecione...</option>
+                        {services.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        className="form-control form-control-sm"
+                        value={row.quantity}
+                        min="0"
+                        step="0.01"
+                        onChange={(e) =>
+                          handleServiceChange(
+                            index,
+                            "quantity",
+                            e.target.value
+                          )
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        className="form-control form-control-sm"
+                        value={row.unit_price}
+                        min="0"
+                        step="0.01"
+                        onChange={(e) =>
+                          handleServiceChange(
+                            index,
+                            "unit_price",
+                            e.target.value
+                          )
+                        }
+                      />
+                    </td>
+                    <td className="os-money-col">
+                      {Number(row.line_total || 0).toFixed(2)}
+                    </td>
+                    <td>
+                      {serviceItems.length > 1 && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-danger"
+                          onClick={() => removeServiceRow(index)}
+                        >
+                          X
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <button
             type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={addServiceLine}
+            className="btn btn-sm btn-outline-primary"
+            onClick={addServiceRow}
           >
             + Adicionar serviço
           </button>
 
-          {/* MATERIAIS / PRODUTOS */}
-          <h3 style={{ marginTop: "1.5rem" }}>Materiais / Produtos</h3>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Produto</th>
-                <th>Qtd</th>
-                <th>Unid.</th>
-                <th>Embalagem</th>
-                <th>Vlr unit. (R$)</th>
-                <th>Subtotal (R$)</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {materialLines.map((line, index) => (
-                <tr key={index}>
-                  <td>
-                    <select
-                      value={line.product_id}
-                      onChange={(e) =>
-                        handleMaterialLineChange(
-                          index,
-                          "product_id",
-                          e.target.value
-                        )
-                      }
-                    >
-                      <option value="">Selecione...</option>
-                      {products.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.type} - {p.name} ({p.color_code})
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={line.quantity}
-                      onChange={(e) =>
-                        handleMaterialLineChange(
-                          index,
-                          "quantity",
-                          e.target.value
-                        )
-                      }
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="text"
-                      value={line.unit}
-                      onChange={(e) =>
-                        handleMaterialLineChange(index, "unit", e.target.value)
-                      }
-                    />
-                  </td>
-                  <td>
-                    <select
-                      value={line.packaging}
-                      onChange={(e) =>
-                        handleMaterialLineChange(
-                          index,
-                          "packaging",
-                          e.target.value
-                        )
-                      }
-                    >
-                      <option value="">Selecione...</option>
-                      {PACKAGING_OPTIONS.map((p) => (
-                        <option key={p.value} value={p.value}>
-                          {p.label}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={line.unit_price}
-                      onChange={(e) =>
-                        handleMaterialLineChange(
-                          index,
-                          "unit_price",
-                          e.target.value
-                        )
-                      }
-                    />
-                  </td>
-                  <td>{Number(line.total_cost || 0).toFixed(2)}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="btn btn-danger btn-sm"
-                      onClick={() => removeMaterialLine(index)}
-                    >
-                      X
-                    </button>
-                  </td>
+          {/* MATERIAIS */}
+          <hr />
+          <h3 className="os-section-title">Materiais / Produtos</h3>
+          <div className="table-responsive">
+            <table className="table table-sm os-table">
+              <thead>
+                <tr>
+                  <th style={{ width: "30%" }}>Produto</th>
+                  <th style={{ width: "10%" }}>Qtd</th>
+                  <th style={{ width: "10%" }}>Unid.</th>
+                  <th style={{ width: "15%" }}>Embalagem</th>
+                  <th style={{ width: "15%" }}>Vlr unit. (R$)</th>
+                  <th style={{ width: "15%" }}>Subtotal (R$)</th>
+                  <th style={{ width: "5%" }}></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {materialItems.map((row, index) => (
+                  <tr key={index}>
+                    <td>
+                      <select
+                        className="form-control form-control-sm"
+                        value={row.product_id}
+                        onChange={(e) =>
+                          handleMaterialChange(
+                            index,
+                            "product_id",
+                            e.target.value
+                          )
+                        }
+                      >
+                        <option value="">Selecione...</option>
+                        {products.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.type} - {p.name} {p.color_code && `(${p.color_code})`}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        className="form-control form-control-sm"
+                        value={row.quantity}
+                        min="0"
+                        step="0.01"
+                        onChange={(e) =>
+                          handleMaterialChange(
+                            index,
+                            "quantity",
+                            e.target.value
+                          )
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        value={row.unit}
+                        onChange={(e) =>
+                          handleMaterialChange(index, "unit", e.target.value)
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        value={row.packaging}
+                        onChange={(e) =>
+                          handleMaterialChange(
+                            index,
+                            "packaging",
+                            e.target.value
+                          )
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        className="form-control form-control-sm"
+                        value={row.unit_price}
+                        min="0"
+                        step="0.01"
+                        onChange={(e) =>
+                          handleMaterialChange(
+                            index,
+                            "unit_price",
+                            e.target.value
+                          )
+                        }
+                      />
+                    </td>
+                    <td className="os-money-col">
+                      {Number(row.total_cost || 0).toFixed(2)}
+                    </td>
+                    <td>
+                      {materialItems.length > 1 && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-danger"
+                          onClick={() => removeMaterialRow(index)}
+                        >
+                          X
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <button
             type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={addMaterialLine}
+            className="btn btn-sm btn-outline-primary"
+            onClick={addMaterialRow}
           >
             + Adicionar material
           </button>
 
           {/* TOTAIS */}
-          <h3 style={{ marginTop: "1.5rem" }}>Totais</h3>
-          <div className="form-row">
+          <hr />
+          <h3 className="os-section-title">Totais</h3>
+          <div className="os-grid os-grid-totals">
             <div className="form-group">
               <label>Total serviços (R$)</label>
               <input
-                type="text"
-                value={Number(form.total_services || 0).toFixed(2)}
+                className="form-control"
+                value={totalServices.toFixed(2)}
                 readOnly
               />
             </div>
             <div className="form-group">
               <label>Total materiais (R$)</label>
               <input
-                type="text"
-                value={Number(form.total_materials || 0).toFixed(2)}
+                className="form-control"
+                value={totalMaterials.toFixed(2)}
                 readOnly
               />
             </div>
             <div className="form-group">
               <label>Total geral (R$)</label>
               <input
-                type="text"
-                value={Number(form.total_general || 0).toFixed(2)}
+                className="form-control"
+                value={totalGeneral.toFixed(2)}
                 readOnly
               />
             </div>
             <div className="form-group">
               <label>Desconto (R$)</label>
               <input
-                type="text"
-                value={Number(form.discount_value || 0).toFixed(2)}
+                className="form-control"
+                value={discountValue.toFixed(2)}
                 readOnly
               />
             </div>
             <div className="form-group">
               <label>Total final (R$)</label>
               <input
-                type="text"
-                value={Number(form.total_final || 0).toFixed(2)}
+                className="form-control"
+                value={totalFinal.toFixed(2)}
                 readOnly
               />
             </div>
           </div>
 
-          {/* Botões */}
-          <div className="form-row" style={{ marginTop: "1rem" }}>
-            <button className="btn btn-primary" type="submit" disabled={saving}>
-              {saving
-                ? "Salvando..."
-                : editingOrderId
-                ? "Salvar alterações"
-                : "Salvar OS"}
+          <div className="os-actions">
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={loading}
+            >
+              {editingId ? "Atualizar OS" : "Salvar OS"}
             </button>
             <button
               type="button"
               className="btn btn-secondary"
-              style={{ marginLeft: "0.5rem" }}
               onClick={resetForm}
-              disabled={saving}
+              disabled={loading}
             >
               Limpar
             </button>
@@ -927,14 +959,11 @@ function OrdersPage() {
         </form>
       </div>
 
-      {/* LISTA DE OS */}
-      <div className="card" style={{ marginTop: "2rem" }}>
-        <h2>Ordens de Serviço cadastradas</h2>
-
-        {orders.length === 0 ? (
-          <p>Nenhuma OS cadastrada ainda.</p>
-        ) : (
-          <table className="table">
+      {/* LISTAGEM */}
+      <div className="os-card">
+        <h2 className="os-section-title">Ordens de Serviço cadastradas</h2>
+        <div className="table-responsive">
+          <table className="table table-striped table-sm os-table">
             <thead>
               <tr>
                 <th>Nº OS</th>
@@ -944,61 +973,65 @@ function OrdersPage() {
                 <th>Abertura</th>
                 <th>Previsão</th>
                 <th>Total final (R$)</th>
-                <th>Ações</th>
+                <th style={{ width: "230px" }}>Ações</th>
               </tr>
             </thead>
             <tbody>
-              {orders.map((order) => (
-                <tr key={order.id}>
-                  <td>{order.order_number || order.id}</td>
-                  <td>{order.clients?.name}</td>
-                  <td>
-                    {STATUS_OPTIONS.find((s) => s.value === order.status)
-                      ?.label || order.status}
+              {orders.map((o) => (
+                <tr key={o.id}>
+                  <td>{o.order_number || o.id}</td>
+                  <td>{o.clients?.name}</td>
+                  <td>{o.status}</td>
+                  <td>{o.payment_type}</td>
+                  <td>{formatDateBR(o.opening_date)}</td>
+                  <td>{formatDateBR(o.due_date)}</td>
+                  <td className="os-money-col">
+                    {Number(o.total_final || 0).toFixed(2)}
                   </td>
                   <td>
-                    {PAYMENT_OPTIONS.find(
-                      (p) => p.value === order.payment_type
-                    )?.label || order.payment_type}
-                  </td>
-                  <td>{formatDate(order.opening_date)}</td>
-                  <td>{formatDate(order.due_date)}</td>
-                  <td>{Number(order.total_final || 0).toFixed(2)}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => navigate(`/orders/print/${order.id}`)}
-                    >
-                      Imprimir
-                    </button>{" "}
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => navigate(`/orders/${order.id}/sign`)}
-                    >
-                      Assinar
-                    </button>{" "}
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => handleEdit(order.id)}
-                    >
-                      Editar
-                    </button>{" "}
-                    <button
-                      type="button"
-                      className="btn btn-danger btn-sm"
-                      onClick={() => handleDelete(order.id)}
-                    >
-                      Remover
-                    </button>
+                    <div className="os-actions-row">
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-secondary"
+                        onClick={() => navigate(`/orders/${o.id}/print`)}
+                      >
+                        Imprimir
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-secondary"
+                        onClick={() => navigate(`/orders/${o.id}/sign`)}
+                      >
+                        Assinar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-primary"
+                        onClick={() => handleEdit(o.id)}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-danger"
+                        onClick={() => handleRemove(o.id)}
+                      >
+                        Remover
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
+              {orders.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="text-center">
+                    Nenhuma OS cadastrada ainda.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
-        )}
+        </div>
       </div>
     </div>
   );
