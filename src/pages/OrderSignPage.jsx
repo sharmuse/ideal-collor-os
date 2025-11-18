@@ -1,3 +1,4 @@
+// src/pages/OrderSignPage.jsx
 import React, { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import SignaturePad from 'react-signature-canvas'
@@ -15,7 +16,7 @@ Estou ciente também de que, em razão das características dos materiais e do p
 Declaro ainda que as informações de metragem e local de aplicação fornecidas são de minha responsabilidade, bem como qualquer necessidade de metragem extra decorrente de erro de cálculo, remanejamento ou alterações na obra.
 `.trim()
 
-function dataURLToBlob(dataURL) {
+function dataURLToBlob (dataURL) {
   const parts = dataURL.split(',')
   const byteString = atob(parts[1])
   const mimeString = parts[0].split(':')[1].split(';')[0]
@@ -27,7 +28,7 @@ function dataURLToBlob(dataURL) {
   return new Blob([ab], { type: mimeString })
 }
 
-function OrderSignPage() {
+function OrderSignPage () {
   const { id } = useParams()
   const sigRef = useRef(null)
 
@@ -36,14 +37,18 @@ function OrderSignPage() {
   const [error, setError] = useState('')
   const [order, setOrder] = useState(null)
 
-  const [signerType, setSignerType] = useState('client') // 'client' ou 'seller'
+  // 'client' = cliente / comprador
+  // 'seller' = responsável Ideal Collor
+  const [signerType, setSignerType] = useState('client')
   const [name, setName] = useState('')
   const [document, setDocument] = useState('')
   const [accepted, setAccepted] = useState(false)
 
   useEffect(() => {
-    async function loadOrder() {
+    async function loadOrder () {
       setLoading(true)
+      setError('')
+
       const { data, error } = await supabase
         .from('orders')
         .select(`
@@ -64,21 +69,25 @@ function OrderSignPage() {
         setError('Erro ao carregar a Ordem de Serviço.')
       } else {
         setOrder(data)
-        if (data.clients?.name) {
-          setName(data.clients.name)
-        }
-        if (data.clients?.document) {
-          setDocument(data.clients.document)
-        }
+        if (data.clients?.name) setName(data.clients.name)
+        if (data.clients?.document) setDocument(data.clients.document)
       }
+
       setLoading(false)
     }
 
     loadOrder()
   }, [id])
 
-  async function handleSubmit(e) {
-    e.preventDefault()
+  function isAlreadySignedAs (type) {
+    if (!order) return false
+    if (type === 'client') return !!order.client_signed
+    if (type === 'seller') return !!order.seller_signed
+    return false
+  }
+
+  async function handleSubmit (e) {
+    if (e) e.preventDefault()
     setError('')
 
     if (!accepted) {
@@ -101,15 +110,20 @@ function OrderSignPage() {
       return
     }
 
+    if (isAlreadySignedAs(signerType)) {
+      setError('Esse tipo de assinatura já foi registrado para esta OS.')
+      return
+    }
+
     setSaving(true)
 
     try {
-      // 1) capturar a imagem da assinatura
+      // 1) Capturar a imagem da assinatura
       const dataURL = sigRef.current.getTrimmedCanvas().toDataURL('image/png')
       const blob = dataURLToBlob(dataURL)
       const filePath = `${signerType}-${id}-${Date.now()}.png`
 
-      // 2) enviar para Storage (bucket "signatures")
+      // 2) Enviar para o bucket "signatures"
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('signatures')
         .upload(filePath, blob, {
@@ -117,16 +131,23 @@ function OrderSignPage() {
           upsert: true
         })
 
-      if (uploadError) {
+      if (uploadError || !uploadData) {
         console.error(uploadError)
         setError('Erro ao enviar assinatura. Tente novamente.')
         return
       }
 
-      const publicUrl = supabase.storage
+      const { data: publicUrlData } = supabase.storage
         .from('signatures')
-        .getPublicUrl(uploadData.path).data.publicUrl
+        .getPublicUrl(uploadData.path)
 
+      const publicUrl = publicUrlData?.publicUrl
+      if (!publicUrl) {
+        setError('Não foi possível gerar o link público da assinatura.')
+        return
+      }
+
+      // 3) Atualizar a OS com os dados da assinatura
       const now = new Date().toISOString()
       const updatePayload = {}
 
@@ -154,17 +175,14 @@ function OrderSignPage() {
       }
 
       alert('Assinatura registrada com sucesso!')
-      window.location.href = `/orders/${id}/print`
+      // Voltar para a página de impressão da OS
+      window.location.href = `/orders/print/${id}`
+    } catch (err) {
+      console.error(err)
+      setError('Erro inesperado ao registrar a assinatura.')
     } finally {
       setSaving(false)
     }
-  }
-
-  function isAlreadySignedAs(type) {
-    if (!order) return false
-    if (type === 'client') return !!order.client_signed
-    if (type === 'seller') return !!order.seller_signed
-    return false
   }
 
   if (loading) {
@@ -178,10 +196,9 @@ function OrderSignPage() {
   return (
     <div className="form-card" style={{ maxWidth: 900, margin: '1rem auto' }}>
       <h2>Assinatura eletrônica da OS</h2>
+
       <p><strong>Nº OS:</strong> {order.order_number}</p>
-      <p>
-        <strong>Cliente:</strong> {order.clients?.name || '—'}
-      </p>
+      <p><strong>Cliente:</strong> {order.clients?.name || '—'}</p>
       <p>
         <strong>Valor total:</strong>{' '}
         R$ {Number(order.total_final || 0).toFixed(2)}
@@ -189,6 +206,7 @@ function OrderSignPage() {
 
       <hr style={{ margin: '1rem 0' }} />
 
+      {/* Dados do assinante */}
       <form onSubmit={handleSubmit} className="form-grid">
         <label>
           Quem está assinando?
@@ -220,6 +238,7 @@ function OrderSignPage() {
         )}
       </form>
 
+      {/* Termos */}
       <div style={{ marginTop: '1rem' }}>
         <h3>Termos de ciência e aceite</h3>
         <div
@@ -252,11 +271,14 @@ function OrderSignPage() {
         </label>
       </div>
 
+      {/* Quadro de assinatura */}
       <div style={{ marginTop: '1rem' }}>
         <h3>Assinatura</h3>
         <p style={{ fontSize: '0.9rem' }}>
-          Assine com o dedo (no celular) ou com o mouse (no computador) no quadro abaixo.
+          Assine com o dedo (no celular) ou com o mouse (no computador) no
+          quadro abaixo.
         </p>
+
         <div
           style={{
             border: '1px solid #ccc',
@@ -279,6 +301,7 @@ function OrderSignPage() {
             }}
           />
         </div>
+
         <button
           type="button"
           className="button-secondary button-xs"
@@ -289,10 +312,12 @@ function OrderSignPage() {
         </button>
       </div>
 
+      {/* Erros */}
       {error && (
         <p style={{ color: 'red', marginTop: '0.75rem' }}>{error}</p>
       )}
 
+      {/* Botão principal */}
       <div className="form-actions" style={{ marginTop: '1rem' }}>
         <button
           type="button"
@@ -306,9 +331,11 @@ function OrderSignPage() {
         </button>
       </div>
 
+      {/* Informações de quem já assinou */}
       {order.client_signed && (
         <p style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
-          Cliente já assinou em: {order.client_signed_at
+          Cliente já assinou em:{' '}
+          {order.client_signed_at
             ? new Date(order.client_signed_at).toLocaleString('pt-BR')
             : ''}
         </p>
@@ -316,7 +343,8 @@ function OrderSignPage() {
 
       {order.seller_signed && (
         <p style={{ marginTop: '0.25rem', fontSize: '0.85rem' }}>
-          Responsável IDEAL COLLOR já assinou em: {order.seller_signed_at
+          Responsável IDEAL COLLOR já assinou em:{' '}
+          {order.seller_signed_at
             ? new Date(order.seller_signed_at).toLocaleString('pt-BR')
             : ''}
         </p>
@@ -326,4 +354,3 @@ function OrderSignPage() {
 }
 
 export default OrderSignPage
-
