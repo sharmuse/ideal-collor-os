@@ -2,7 +2,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
-import "./OrderPrintPage.css";
 
 function formatDate(dateStr) {
   if (!dateStr) return "";
@@ -43,12 +42,7 @@ function OrderPrintPage() {
             total_final,
             discount_percent,
             client_signed,
-            client_signed_at,
             client_signature_url,
-            client_accept_text,
-            seller_signed,
-            seller_signed_at,
-            seller_signature_url,
             clients:client_id (
               name,
               document,
@@ -102,7 +96,10 @@ function OrderPrintPage() {
           .eq("id", id)
           .single();
 
-        if (error) throw error;
+        if (error) {
+          console.error("Erro Supabase ao carregar OS:", error);
+          throw error;
+        }
         setOrder(data);
       } catch (err) {
         console.error(err);
@@ -122,7 +119,7 @@ function OrderPrintPage() {
 
   if (loading) {
     return (
-      <div className="print-page centered">
+      <div className="centered">
         <p>Carregando OS...</p>
       </div>
     );
@@ -130,7 +127,7 @@ function OrderPrintPage() {
 
   if (!order) {
     return (
-      <div className="print-page centered">
+      <div className="centered">
         <p>OS não encontrada.</p>
       </div>
     );
@@ -141,36 +138,25 @@ function OrderPrintPage() {
 
   return (
     <div className="print-page">
-      {/* Barra de ações que não aparece na impressão */}
-      <div className="no-print print-toolbar">
+      <div className="no-print" style={{ marginBottom: "1rem" }}>
         <button
           className="btn btn-secondary"
           onClick={() => navigate("/orders")}
         >
           Voltar
-        </button>
+        </button>{" "}
         <button className="btn btn-primary" onClick={handlePrint}>
-          Imprimir / Gerar PDF
+          Imprimir
         </button>
       </div>
 
       <div className="print-card">
-        {/* Cabeçalho */}
         <header className="print-header">
-          <div className="print-header-left">
-            <div className="brand-logo-box">
-              <span className="brand-logo-text">IC</span>
-            </div>
-            <div>
-              <h1>IDEAL COLLOR</h1>
-              <p>Sistema de Ordem de Serviço</p>
-              <p className="header-subline">
-                Pinturas, texturas, fulget e revestimentos especiais
-              </p>
-            </div>
+          <div>
+            <h1>IDEAL COLLOR</h1>
+            <p>Sistema de Ordem de Serviço</p>
           </div>
-
-          <div className="print-header-right">
+          <div>
             <h2>Ordem de Serviço</h2>
             <p>
               <strong>Nº OS:</strong> {order.order_number || order.id}
@@ -178,92 +164,70 @@ function OrderPrintPage() {
             <p>
               <strong>Status:</strong> {order.status}
             </p>
-            <p>
-              <strong>Pagamento:</strong> {order.payment_type}
-            </p>
-            <p>
-              <strong>Abertura:</strong> {formatDate(order.opening_date)}
-            </p>
-            <p>
-              <strong>Previsão:</strong> {formatDate(order.due_date)}
-            </p>
           </div>
         </header>
 
-        {/* Dados do cliente */}
         <section className="print-section">
           <h3>Dados do Cliente</h3>
-          <div className="section-grid">
-            <div>
-              <p>
-                <strong>Nome:</strong> {client?.name}
-              </p>
-              <p>
-                <strong>Documento:</strong> {client?.document}
-              </p>
-              <p>
-                <strong>Telefone:</strong> {client?.phone}{" "}
-                {client?.whatsapp && (
-                  <>
-                    | <strong>WhatsApp:</strong> {client.whatsapp}
-                  </>
-                )}
-              </p>
-              <p>
-                <strong>E-mail:</strong> {client?.email}
-              </p>
-            </div>
-            <div>
-              <p>
-                <strong>Endereço:</strong>{" "}
-                {client?.street}, {client?.number} - {client?.district},{" "}
-                {client?.city}/{client?.state} - CEP {client?.zip_code}
-              </p>
-              {client?.reference_point && (
-                <p>
-                  <strong>Referência:</strong> {client.reference_point}
-                </p>
-              )}
-            </div>
-          </div>
+          <p>
+            <strong>Nome:</strong> {client?.name}
+          </p>
+          <p>
+            <strong>Documento:</strong> {client?.document}
+          </p>
+          <p>
+            <strong>Telefone:</strong> {client?.phone}{" "}
+            {client?.whatsapp && (
+              <>
+                | <strong>WhatsApp:</strong> {client.whatsapp}
+              </>
+            )}
+          </p>
+          <p>
+            <strong>E-mail:</strong> {client?.email}
+          </p>
+          <p>
+            <strong>Endereço:</strong>{" "}
+            {client?.street}, {client?.number} - {client?.district},{" "}
+            {client?.city}/{client?.state} - CEP {client?.zip_code}
+          </p>
+          {client?.reference_point && (
+            <p>
+              <strong>Referência:</strong> {client.reference_point}
+            </p>
+          )}
         </section>
 
-        {/* Dados da obra */}
         <section className="print-section">
           <h3>Dados da Obra</h3>
           {site ? (
-            <div className="section-grid">
-              <div>
+            <>
+              <p>
+                <strong>Endereço:</strong>{" "}
+                {site.street}, {site.number} - {site.district},{" "}
+                {site.city}/{site.state} - CEP {site.zip_code}
+              </p>
+              <p>
+                <strong>Serviço principal:</strong> {site.main_service_type}
+              </p>
+              <p>
+                <strong>Área (m²):</strong> {site.area_m2}
+              </p>
+              {site.reference_point && (
                 <p>
-                  <strong>Endereço:</strong>{" "}
-                  {site.street}, {site.number} - {site.district},{" "}
-                  {site.city}/{site.state} - CEP {site.zip_code}
+                  <strong>Referência:</strong> {site.reference_point}
                 </p>
-                {site.reference_point && (
-                  <p>
-                    <strong>Referência:</strong> {site.reference_point}
-                  </p>
-                )}
-              </div>
-              <div>
-                <p>
-                  <strong>Serviço principal:</strong> {site.main_service_type}
-                </p>
-                <p>
-                  <strong>Área (m²):</strong> {site.area_m2}
-                </p>
-              </div>
-            </div>
+              )}
+            </>
           ) : (
             <p>Sem obra vinculada.</p>
           )}
         </section>
 
-        {/* Serviços */}
         <section className="print-section">
           <h3>Serviços</h3>
           {order.order_services && order.order_services.length > 0 ? (
-            <table className="os-table">
+            <table className="table print-table">
               <thead>
                 <tr>
                   <th>Serviço</th>
@@ -290,11 +254,10 @@ function OrderPrintPage() {
           )}
         </section>
 
-        {/* Materiais */}
         <section className="print-section">
           <h3>Materiais / Produtos</h3>
           {order.order_materials && order.order_materials.length > 0 ? (
-            <table className="os-table">
+            <table className="table print-table">
               <thead>
                 <tr>
                   <th>Tipo</th>
@@ -327,38 +290,30 @@ function OrderPrintPage() {
           )}
         </section>
 
-        {/* Totais */}
-        <section className="print-section totals-section">
+        <section className="print-section">
           <h3>Totais</h3>
-          <div className="totals-grid">
-            <div>
-              <p>
-                <strong>Total serviços:</strong>{" "}
-                R$ {Number(order.total_services || 0).toFixed(2)}
-              </p>
-              <p>
-                <strong>Total materiais:</strong>{" "}
-                R$ {Number(order.total_materials || 0).toFixed(2)}
-              </p>
-            </div>
-            <div>
-              <p>
-                <strong>Total geral:</strong>{" "}
-                R$ {Number(order.total_general || 0).toFixed(2)}
-              </p>
-              <p>
-                <strong>Desconto:</strong>{" "}
-                {Number(order.discount_percent || 0).toFixed(1)}%
-              </p>
-            </div>
-            <div className="total-final-box">
-              <p>Total final</p>
-              <span>R$ {Number(order.total_final || 0).toFixed(2)}</span>
-            </div>
-          </div>
+          <p>
+            <strong>Total serviços:</strong>{" "}
+            R$ {Number(order.total_services || 0).toFixed(2)}
+          </p>
+          <p>
+            <strong>Total materiais:</strong>{" "}
+            R$ {Number(order.total_materials || 0).toFixed(2)}
+          </p>
+          <p>
+            <strong>Total geral:</strong>{" "}
+            R$ {Number(order.total_general || 0).toFixed(2)}
+          </p>
+          <p>
+            <strong>Desconto:</strong>{" "}
+            {Number(order.discount_percent || 0).toFixed(1)}%
+          </p>
+          <p>
+            <strong>Total final:</strong>{" "}
+            R$ {Number(order.total_final || 0).toFixed(2)}
+          </p>
         </section>
 
-        {/* Observações */}
         <section className="print-section">
           <h3>Observações</h3>
           {order.technical_notes && (
@@ -376,70 +331,20 @@ function OrderPrintPage() {
           )}
         </section>
 
-        {/* Termos aceitos pelo cliente (texto completo do aceite) */}
-        {order.client_accept_text && (
-          <section className="print-section">
-            <h3>Termo de ciência e aceite do cliente</h3>
-            <div className="terms-box">
-              <pre>{order.client_accept_text}</pre>
-            </div>
-          </section>
-        )}
-
-        {/* Assinaturas */}
-        <section className="print-section signatures-section">
-          <h3>Assinaturas</h3>
-          <div className="signatures-grid">
-            <div className="signature-block">
-              <p className="signature-title">Cliente / Comprador</p>
-              {order.client_signed && order.client_signature_url ? (
-                <>
-                  <img
-                    src={order.client_signature_url}
-                    alt="Assinatura do cliente"
-                    className="signature-image"
-                  />
-                  <p className="signature-date">
-                    Assinado em:{" "}
-                    {order.client_signed_at
-                      ? new Date(order.client_signed_at).toLocaleString(
-                          "pt-BR"
-                        )
-                      : ""}
-                  </p>
-                </>
-              ) : (
-                <p className="signature-line">
-                  ____________________________________________
-                </p>
-              )}
-            </div>
-
-            <div className="signature-block">
-              <p className="signature-title">Responsável IDEAL COLLOR</p>
-              {order.seller_signed && order.seller_signature_url ? (
-                <>
-                  <img
-                    src={order.seller_signature_url}
-                    alt="Assinatura da Ideal Collor"
-                    className="signature-image"
-                  />
-                  <p className="signature-date">
-                    Assinado em:{" "}
-                    {order.seller_signed_at
-                      ? new Date(order.seller_signed_at).toLocaleString(
-                          "pt-BR"
-                        )
-                      : ""}
-                  </p>
-                </>
-              ) : (
-                <p className="signature-line">
-                  ____________________________________________
-                </p>
-              )}
-            </div>
-          </div>
+        <section className="print-section">
+          <h3>Assinatura do Cliente</h3>
+          {order.client_signed && order.client_signature_url ? (
+            <>
+              <p>Assinado eletronicamente.</p>
+              <img
+                src={order.client_signature_url}
+                alt="Assinatura do cliente"
+                style={{ maxWidth: "300px", maxHeight: "150px" }}
+              />
+            </>
+          ) : (
+            <p>______________________________________________</p>
+          )}
         </section>
       </div>
     </div>
