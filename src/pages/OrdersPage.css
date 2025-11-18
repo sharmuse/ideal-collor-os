@@ -1,0 +1,99 @@
+/* src/pages/OrdersPage.css */
+
+.orders-page {
+  max-width: 1150px;
+  margin: 0 auto;
+  padding: 24px 16px 40px;
+}
+
+.os-title {
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: #0b3558;
+  margin-bottom: 18px;
+}
+
+.os-card {
+  background: #ffffff;
+  border-radius: 6px;
+  border: 1px solid #d0d7de;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  padding: 18px 20px 20px;
+  margin-bottom: 24px;
+}
+
+.os-section-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #0b3558;
+  margin-bottom: 12px;
+}
+
+.os-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  margin-bottom: 12px;
+}
+
+.os-grid .form-group {
+  flex: 1 1 220px;
+  min-width: 210px;
+}
+
+.orders-page .form-group label {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.os-grid-totals .form-group {
+  max-width: 220px;
+}
+
+.os-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 10px;
+}
+
+.os-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.os-table thead th {
+  background-color: #0b3558;
+  color: #ffffff;
+  border-color: #0b3558;
+  font-weight: 500;
+}
+
+.os-table tbody td {
+  vertical-align: middle;
+}
+
+.os-money-col {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Responsivo */
+@media (max-width: 768px) {
+  .orders-page {
+    padding: 16px 10px 24px;
+  }
+
+  .os-card {
+    padding: 14px 12px 16px;
+  }
+
+  .os-grid .form-group {
+    min-width: 100%;
+  }
+
+  .os-actions-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
