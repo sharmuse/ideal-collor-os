@@ -80,9 +80,6 @@ function OrdersPage() {
   const [materialLines, setMaterialLines] = useState([emptyMaterialLine()]);
   const [editingOrderId, setEditingOrderId] = useState(null);
 
-  // ------------------------------------------------
-  // Carregamento inicial
-  // ------------------------------------------------
   useEffect(() => {
     async function loadAll() {
       setLoading(true);
@@ -133,9 +130,6 @@ function OrdersPage() {
     loadAll();
   }, []);
 
-  // ------------------------------------------------
-  // Cálculo de totais
-  // ------------------------------------------------
   function recalcTotals(nextServiceLines, nextMaterialLines, nextForm) {
     const servicesTotal = nextServiceLines.reduce(
       (sum, line) => sum + (Number(line.line_total) || 0),
@@ -149,7 +143,6 @@ function OrdersPage() {
 
     let discountPercent = Number(nextForm.discount_percent) || 0;
 
-    // regra: desconto máximo 8% e só para pagamento à vista
     if (nextForm.payment_type !== "avista") {
       discountPercent = 0;
     } else if (discountPercent > 8) {
@@ -172,9 +165,6 @@ function OrdersPage() {
     }));
   }
 
-  // ------------------------------------------------
-  // Handlers de formulário
-  // ------------------------------------------------
   function handleFormChange(e) {
     const { name, value } = e.target;
     const nextForm = { ...form, [name]: value };
@@ -185,7 +175,6 @@ function OrdersPage() {
     const lines = [...serviceLines];
     lines[index] = { ...lines[index], [field]: value };
 
-    // se mudou serviço, preenche valor unitário padrão
     if (field === "service_id") {
       const svc = services.find((s) => s.id === value);
       if (svc && svc.labor_price_unit != null) {
@@ -205,7 +194,6 @@ function OrdersPage() {
     const lines = [...materialLines];
     lines[index] = { ...lines[index], [field]: value };
 
-    // se mudou produto, preenche unidade e preço padrão
     if (field === "product_id") {
       const prod = products.find((p) => p.id === value);
       if (prod) {
@@ -242,9 +230,6 @@ function OrdersPage() {
     recalcTotals(serviceLines, lines, form);
   }
 
-  // ------------------------------------------------
-  // Salvar OS
-  // ------------------------------------------------
   async function handleSubmit(e) {
     e.preventDefault();
     setSaving(true);
@@ -359,9 +344,6 @@ function OrdersPage() {
     }
   }
 
-  // ------------------------------------------------
-  // Editar OS
-  // ------------------------------------------------
   async function handleEditOrder(orderId) {
     setLoading(true);
     try {
@@ -441,9 +423,6 @@ function OrdersPage() {
     }
   }
 
-  // ------------------------------------------------
-  // Remover OS
-  // ------------------------------------------------
   async function handleDeleteOrder(orderId) {
     if (!window.confirm("Tem certeza que deseja remover esta OS?")) return;
 
@@ -460,11 +439,7 @@ function OrdersPage() {
     }
   }
 
-  // ------------------------------------------------
-  // Navegação
-  // ------------------------------------------------
   function handlePrint(orderId) {
-    // CASA COM A ROTA: /orders/:id/print
     navigate(`/orders/${orderId}/print`);
   }
 
@@ -476,9 +451,6 @@ function OrdersPage() {
     ? sites.filter((s) => s.client_id === form.client_id)
     : sites;
 
-  // ------------------------------------------------
-  // Render
-  // ------------------------------------------------
   return (
     <div className="page-container">
       <div className="page-header">
@@ -488,7 +460,7 @@ function OrdersPage() {
 
       {loading && <p style={{ marginBottom: "1rem" }}>Carregando dados...</p>}
 
-      {/* Formulário */}
+      {/* FORMULÁRIO COMPLETO */}
       <form onSubmit={handleSubmit} className="card" style={{ marginBottom: "2rem" }}>
         <h2>{editingOrderId ? "Editar Ordem de Serviço" : "Nova Ordem de Serviço"}</h2>
 
@@ -607,7 +579,7 @@ function OrdersPage() {
           />
         </div>
 
-        {/* Serviços */}
+        {/* SERVIÇOS */}
         <h3>Serviços</h3>
         <table className="table">
           <thead>
@@ -680,7 +652,7 @@ function OrdersPage() {
           Adicionar serviço
         </button>
 
-        {/* Materiais / Produtos */}
+        {/* MATERIAIS */}
         <h3>Materiais / Produtos</h3>
         <table className="table">
           <thead>
@@ -779,7 +751,7 @@ function OrdersPage() {
           Adicionar material
         </button>
 
-        {/* Totais */}
+        {/* TOTAIS */}
         <div className="totals-grid">
           <div>
             <strong>Total serviços:</strong>{" "}
@@ -823,7 +795,7 @@ function OrdersPage() {
         )}
       </form>
 
-      {/* Lista de OS */}
+      {/* LISTA DE OS */}
       <div className="card">
         <h2>Ordens de Serviço cadastradas</h2>
 
