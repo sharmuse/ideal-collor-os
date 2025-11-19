@@ -74,7 +74,7 @@ function OrdersPage() {
               .order("name"),
             supabase
               .from("products")
-              .select("id, type, name, color_code, unit, price_unit")
+              .select("id, type, name, color_code, unit, price_unit, price")
               .order("name"),
             supabase
               .from("orders")
@@ -163,9 +163,21 @@ function OrdersPage() {
         row.product_id = value;
         const prod = products.find((p) => p.id === value);
         if (prod) {
-          // Preenche preço e unidade com o que está cadastrado no produto
-          row.unit_price = prod.price_unit || 0;
-          if (!row.unit) row.unit = prod.unit || "";
+          // Tenta usar price_unit; se estiver vazio/nulo, usa price
+          let unitPrice = 0;
+
+          if (prod.price_unit !== null && prod.price_unit !== undefined) {
+            unitPrice = Number(prod.price_unit) || 0;
+          } else if (prod.price !== null && prod.price !== undefined) {
+            unitPrice = Number(prod.price) || 0;
+          }
+
+          row.unit_price = unitPrice;
+
+          // Se a unidade estiver vazia na linha, usa a unidade cadastrada no produto
+          if (!row.unit) {
+            row.unit = prod.unit || "";
+          }
         }
       } else if (field === "quantity" || field === "unit_price") {
         row[field] = value;
@@ -326,7 +338,6 @@ function OrdersPage() {
         }
 
         alert("Ordem de Serviço criada com sucesso!");
-
       } else {
         // EDITAR OS EXISTENTE
         const orderId = editingId;
@@ -805,7 +816,8 @@ function OrdersPage() {
                         <option value="">Selecione...</option>
                         {products.map((p) => (
                           <option key={p.id} value={p.id}>
-                            {p.type} - {p.name} {p.color_code && `(${p.color_code})`}
+                            {p.type} - {p.name}{" "}
+                            {p.color_code && `(${p.color_code})`}
                           </option>
                         ))}
                       </select>
@@ -837,8 +849,7 @@ function OrdersPage() {
                       />
                     </td>
                     <td>
-                      <input
-                        type="text"
+                      <select
                         className="form-control form-control-sm"
                         value={row.packaging}
                         onChange={(e) =>
@@ -848,7 +859,15 @@ function OrdersPage() {
                             e.target.value
                           )
                         }
-                      />
+                      >
+                        <option value="">Selecione...</option>
+                        <option value="Balde">Balde</option>
+                        <option value="Saco">Saco</option>
+                        <option value="Lata">Lata</option>
+                        <option value="Galão">Galão</option>
+                        <option value="Caixa">Caixa</option>
+                        <option value="Outro">Outro</option>
+                      </select>
                     </td>
                     <td>
                       <input
